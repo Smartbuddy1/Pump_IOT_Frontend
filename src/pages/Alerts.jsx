@@ -74,9 +74,9 @@ const Alerts = () => {
         ? omcsRes.data.data
         : (Array.isArray(omcsRes.data) ? omcsRes.data : []);
 
-      // Only fallback to defaultMachines if there are no registered machines at all in the database
-      if (!Array.isArray(machines) || machines.length === 0) {
-        machines = [...defaultMachines];
+      // Ensure machines is an array; do not inject dummy machines if database is empty
+      if (!Array.isArray(machines)) {
+        machines = [];
       }
 
       setAllMachines(machines);

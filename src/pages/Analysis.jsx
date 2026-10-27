@@ -318,7 +318,7 @@ const Analysis = () => {
         });
 
         let loadedMachines = machineRes.data?.data || (Array.isArray(machineRes.data) ? machineRes.data : []);
-        if (!Array.isArray(loadedMachines) || loadedMachines.length === 0) loadedMachines = defaultMachines;
+        if (!Array.isArray(loadedMachines)) loadedMachines = [];
 
         if (isOmcAdmin) {
           const userOmcId = user?.omcId || user?.omc_id;

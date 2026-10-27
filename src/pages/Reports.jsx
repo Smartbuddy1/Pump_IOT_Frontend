@@ -482,7 +482,7 @@ const Reports = () => {
         });
 
         let loadedMachines = machinesRes.data?.data || (Array.isArray(machinesRes.data) ? machinesRes.data : []);
-        if (!Array.isArray(loadedMachines) || loadedMachines.length === 0) loadedMachines = defaultMachines;
+        if (!Array.isArray(loadedMachines)) loadedMachines = [];
         const loadedAlerts = alertsRes.data?.data || (Array.isArray(alertsRes.data) ? alertsRes.data : []);
 
         if (isOmcAdmin) {
