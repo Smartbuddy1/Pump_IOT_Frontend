@@ -25,7 +25,6 @@ import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
 import { useAuth } from '../context/AuthContext';
 import { getConsolidatedAlerts } from '../utils/alertUtils';
-import { defaultMachines } from '../services/mockStorage';
 import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const Alerts = () => {

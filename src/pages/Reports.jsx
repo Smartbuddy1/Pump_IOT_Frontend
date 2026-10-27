@@ -24,7 +24,6 @@ import {
 import { exportToPDF, exportToExcel } from '../utils/exportUtils';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
-import { defaultMachines, defaultROs, defaultOMCs } from '../services/mockStorage';
 import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const Reports = () => {
@@ -468,18 +467,10 @@ const Reports = () => {
         ]);
 
         let rawOmcs = omcsRes.data?.data || (Array.isArray(omcsRes.data) ? omcsRes.data : []);
-        if (!Array.isArray(rawOmcs) || rawOmcs.length === 0) rawOmcs = defaultOMCs;
+        if (!Array.isArray(rawOmcs)) rawOmcs = [];
 
         let loadedROs = rosRes.data?.data || (Array.isArray(rosRes.data) ? rosRes.data : []);
-        if (!Array.isArray(loadedROs) || loadedROs.length === 0) loadedROs = defaultROs;
-        loadedROs = loadedROs.map(r => {
-          const rId = String(r.id);
-          const rName = String(r.name || '').toLowerCase();
-          if (rName === 'radha' || rName.startsWith('ro ')) {
-            return { ...r, name: rId === '4' ? 'abc' : 'pune pertoleam', location: r.location || 'pune' };
-          }
-          return r;
-        });
+        if (!Array.isArray(loadedROs)) loadedROs = [];
 
         let loadedMachines = machinesRes.data?.data || (Array.isArray(machinesRes.data) ? machinesRes.data : []);
         if (!Array.isArray(loadedMachines)) loadedMachines = [];
@@ -491,17 +482,14 @@ const Reports = () => {
           const myOmc = rawOmcs.find(o => 
             (userOmcId && (String(o.id) === String(userOmcId) || String(o.db_id) === String(userOmcId))) ||
             (userContact && (String(o.contact || '').trim() === userContact || String(o.credentials?.username || '').trim() === userContact))
-          ) || rawOmcs.find(o => String(o.id) === '1' || String(o.name).toLowerCase() === 'iocl') || rawOmcs[0] || { id: 1, name: 'IOCL' };
+          ) || rawOmcs[0] || null;
 
-          const myOmcId = String(myOmc?.id || userOmcId || '1');
+          const myOmcId = String(myOmc?.id || userOmcId || '');
 
-          setOmcs([myOmc]);
+          setOmcs(myOmc ? [myOmc] : []);
 
           // Scoped ROs for this OMC
-          let myROs = loadedROs.filter(ro => ro && (String(ro.omc_id || ro.omcId) === myOmcId || String(ro.name || '').toLowerCase().includes('pune') || String(ro.name || '').toLowerCase().includes('abc')));
-          if (myROs.length === 0) {
-            myROs = defaultROs.filter(ro => String(ro.omc_id) === '1');
-          }
+          let myROs = loadedROs.filter(ro => ro && (String(ro.omc_id || ro.omcId) === myOmcId));
           loadedROs = myROs;
 
           const validRoIds = new Set(loadedROs.map(r => String(r.id)));
@@ -514,14 +502,11 @@ const Reports = () => {
             if (!m) return false;
             const mRo = String(m.ro_id || m.roId || '');
             const mRoName = String(m.roName || m.ro_name || '').toLowerCase();
-            return validRoIds.has(mRo) || validRoIds.has(mRoName) || mRo === '1' || mRo === '4' || mRoName.includes('abc') || mRoName.includes('pertoleam');
+            return validRoIds.has(mRo) || validRoIds.has(mRoName);
           });
 
-          if (myMachines.length === 0) {
-            myMachines = defaultMachines.filter(m => String(m.ro_id || m.roId) === '1' || String(m.ro_id || m.roId) === '4');
-          }
           loadedMachines = myMachines;
-          setSelectedClient(myOmcId);
+          if (myOmcId) setSelectedClient(myOmcId);
         } else if (isRoUser) {
           const userRoId = String(user?.roId || user?.ro_id || '');
           const myRo = loadedROs.find(r => String(r.id) === userRoId || String(r.db_id) === userRoId) || loadedROs[0];
