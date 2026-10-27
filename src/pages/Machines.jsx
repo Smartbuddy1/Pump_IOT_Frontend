@@ -10,6 +10,7 @@ import PrintFooter from '../components/PrintFooter';
 import { useAuth } from '../context/AuthContext';
 import { getConsolidatedAlerts } from '../utils/alertUtils';
 import { matchesMachineQuery } from '../utils/machineSearchUtils';
+import { calculateMachineRating } from '../components/TopRatedMachinesCard';
 
 const Machines = () => {
   const location = useLocation();
