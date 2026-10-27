@@ -225,7 +225,7 @@ const Diagnosis = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '1.25rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '2rem' }}>
           <div style={{ display: 'flex', gap: '2rem' }}>
             <div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '600', margin: '0 0 0.25rem 0' }}>Client (OMC)</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: '600', margin: '0 0 0.25rem 0' }}>OMC</p>
               <p style={{ fontWeight: 'bold', color: 'var(--text-primary)', margin: 0 }}>{machineDetails?.client}</p>
             </div>
             <div>

@@ -18,7 +18,8 @@ import {
   ThumbsUp, 
   User, 
   Phone,
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +28,7 @@ import { exportToPDF, exportHtmlReportToPDF } from '../utils/exportUtils';
 import { LOGO_LEFT_BASE64, LOGO_RIGHT_BASE64 } from '../utils/logoAssets';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
+import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const FeedbackLogs = () => {
   const { user } = useAuth();
@@ -133,36 +135,121 @@ const FeedbackLogs = () => {
       }
     }
 
-    // Search term (machine ID/name, feedback ID, ro name, location, comments, reasons, phone, omc)
+    // Search term filter - comprehensive search across all visible columns & properties
     if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      const cleanNum = term.replace(/^[#id\s:\-_]+/i, '').trim();
-      const mName = String(fb.display_machine_name || fb.machine_name || '').toLowerCase();
+      const query = searchTerm.toLowerCase().trim();
+      const searchWords = query.split(/\s+/).filter(Boolean);
+
+      const mDisplay = String(fb.display_machine_name || fb.machine_name || (fb.machine_id ? `SBP2T${fb.machine_id}` : 'SBP2T501')).toLowerCase();
       const mId = String(fb.machine_id || '').toLowerCase();
-      const fbId = String(fb.id || '');
-      const roName = String(fb.ro_name || '').toLowerCase();
+      const fbId = String(fb.id || '').toLowerCase();
+      const roDisplay = String(fb.ro_name || 'Retail Outlet Pump').toLowerCase();
       const roLoc = String(fb.ro_location || '').toLowerCase();
-      const omcName = String(fb.omc_name || '').toLowerCase();
-      const userName = String(fb.user_name || '').toLowerCase();
+      const omcDisplay = String(fb.omc_name || 'OMC').toLowerCase();
       const comment = String(fb.comment || '').toLowerCase();
       const reasons = String(fb.reasons || '').toLowerCase();
       const phone = String(fb.user_phone || '').toLowerCase();
+      const userName = String(fb.user_name || '').toLowerCase();
 
-      // Direct ID match
-      if (cleanNum && (cleanNum === fbId || cleanNum === mId || mName.includes(cleanNum))) return true;
-      if (mId.includes(term) || mName.includes(term)) return true;
-      if (roName.includes(term) || roLoc.includes(term) || omcName.includes(term)) return true;
-      if (comment.includes(term) || reasons.includes(term) || userName.includes(term)) return true;
-      // Phone match ONLY if search term has at least 4 digits
-      if (cleanNum.length >= 4 && phone.includes(cleanNum)) return true;
+      // Rating terms in numbers, text and sentiment
+      const rNum = Number(fb.rating || 0);
+      let ratingTerms = `${rNum} ${rNum}.0 ${rNum}star ${rNum}stars ${rNum} star ${rNum} stars`;
+      if (rNum >= 4) {
+        ratingTerms += ' excellent उत्कृष्ट good छान';
+      } else if (rNum === 3) {
+        ratingTerms += ' average साधारण';
+      } else if (rNum <= 2 && rNum > 0) {
+        ratingTerms += ' bad खराब complaint complaints poor';
+      }
 
-      // Multi-word search
-      const searchWords = term.split(/\s+/).filter(Boolean);
-      return searchWords.every(word => {
-        const cw = word.replace(/^[#id\s:\-_]+/i, '').trim();
-        if (cw && (cw === fbId || cw === mId || mName.includes(cw))) return true;
-        return mName.includes(word) || mId.includes(word) || roName.includes(word) || roLoc.includes(word) || omcName.includes(word) || comment.includes(word) || reasons.includes(word) || (cw.length >= 4 && phone.includes(cw)) || userName.includes(word);
+      // Date & Time terms
+      let dateTerms = '';
+      if (fb.created_at) {
+        try {
+          const d = new Date(fb.created_at);
+          const dGB = d.toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }); // e.g. 27/10/2026
+          const dHyphen = dGB.replace(/\//g, '-');
+          const tGB = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }); // 10:11 AM
+          const monthShort = d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'Asia/Kolkata' }); // Oct
+          const monthLong = d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'Asia/Kolkata' }); // October
+          dateTerms = `${dGB} ${dHyphen} ${tGB} ${monthShort} ${monthLong} ${d.getFullYear()}`.toLowerCase();
+
+          const now = new Date();
+          if (d.toDateString() === now.toDateString()) {
+            dateTerms += ' today आज';
+          }
+        } catch (e) {}
+      }
+
+      const searchableText = [
+        mDisplay,
+        mId,
+        `#${fbId}`,
+        `id:${fbId}`,
+        `machine:${mId}`,
+        roDisplay,
+        roLoc,
+        omcDisplay,
+        ratingTerms,
+        reasons,
+        comment,
+        phone,
+        userName,
+        dateTerms
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      // Helper to extract suffix from machine string (e.g. 'SBP2T1202' -> '1202', 'SBP2T202' -> '202')
+      const extractMachineSuffix = (str) => {
+        return String(str || '').toLowerCase().replace(/^sbp\s*(?:2t)?/i, '').replace(/[^a-z0-9]/g, '');
+      };
+
+      const mSuffix = extractMachineSuffix(mDisplay);
+
+      // Fast edit distance helper for typo tolerance (e.g. 1 character typo)
+      const getEditDistance = (a, b) => {
+        if (a === b) return 0;
+        const m = a.length, n = b.length;
+        if (Math.abs(m - n) > 2) return 999;
+        const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+        for (let i = 0; i <= m; i++) dp[i][0] = i;
+        for (let j = 0; j <= n; j++) dp[0][j] = j;
+        for (let i = 1; i <= m; i++) {
+          for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+          }
+        }
+        return dp[m][n];
+      };
+
+      // Every search word must be found within this record's actual searchable content or match machine suffix/typo
+      const isMatch = searchWords.every(word => {
+        const cleanWord = word.replace(/^[#:\-_]+/i, '').trim();
+
+        // 1. Direct inclusion
+        if (searchableText.includes(word) || (cleanWord && searchableText.includes(cleanWord))) {
+          return true;
+        }
+
+        // 2. Machine ID matching: last 3 digits, suffix, or prefix+suffix (e.g. '202' or 'SBP2T202' -> 'SBP2T1202')
+        if (matchesMachineQuery(mDisplay, word) || (cleanWord && matchesMachineQuery(mDisplay, cleanWord))) {
+          return true;
+        }
+
+        // 3. Typo tolerance on machine ID or RO name (1 character deviation)
+        if (word.length >= 5) {
+          if (getEditDistance(word, mDisplay) <= 1 || (cleanWord && getEditDistance(cleanWord, mDisplay) <= 1)) {
+            return true;
+          }
+          if (getEditDistance(word, roDisplay) <= 1) {
+            return true;
+          }
+        }
+
+        return false;
       });
+
+      if (!isMatch) return false;
     }
 
     return true;
@@ -349,63 +436,111 @@ const FeedbackLogs = () => {
       {/* Top Summary KPI Cards */}
       <div className="no-print" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: '1.25rem',
-        marginBottom: '2rem'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        gap: '1rem',
+        marginBottom: '1.75rem'
       }}>
         {/* Total Feedbacks */}
-        <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <MessageSquare color="#3b82f6" size={24} />
+        <div style={{
+          background: 'var(--surface-bg)',
+          borderRadius: '12px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '88px',
+          transition: 'all 0.2s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+              Total Feedbacks
+            </span>
+            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MessageSquare color="#3b82f6" size={18} />
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600' }}>TOTAL LOGGED FEEDBACKS</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.2 }}>{totalCount}</div>
-            <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '600', marginTop: '2px' }}>Real-time verified</div>
+          <div style={{ fontSize: '1.85rem', fontWeight: '800', color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            {totalCount}
           </div>
         </div>
 
         {/* Average Rating */}
-        <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Star color="#f59e0b" fill="#f59e0b" size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600' }}>AVERAGE HYGIENE RATING</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.2 }}>
-              {avgRating} <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: '500' }}>/ 5.0</span>
+        <div style={{
+          background: 'var(--surface-bg)',
+          borderRadius: '12px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '88px',
+          transition: 'all 0.2s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+              Average Rating
+            </span>
+            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Star color="#f59e0b" fill="#f59e0b" size={18} />
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#d97706', fontWeight: '600', marginTop: '2px' }}>Customer satisfaction</div>
+          </div>
+          <div style={{ fontSize: '1.85rem', fontWeight: '800', color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1, display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+            {avgRating} <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: '500' }}>/ 5.0</span>
           </div>
         </div>
 
         {/* CSAT Score */}
-        <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Smile color="#10b981" size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600' }}>CUSTOMER SATISFACTION (CSAT)</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.2 }}>
-              {csatPercentage}%
+        <div style={{
+          background: 'var(--surface-bg)',
+          borderRadius: '12px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '88px',
+          transition: 'all 0.2s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+              Customer Satisfaction
+            </span>
+            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Smile color="#10b981" size={18} />
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '600', marginTop: '2px' }}>{happyCount} Happy visitors (4-5★)</div>
+          </div>
+          <div style={{ fontSize: '1.85rem', fontWeight: '800', color: 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            {csatPercentage}%
           </div>
         </div>
 
         {/* Complaints / Issues */}
-        <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <AlertTriangle color="#ef4444" size={24} />
+        <div style={{
+          background: 'var(--surface-bg)',
+          borderRadius: '12px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: '88px',
+          transition: 'all 0.2s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+              Complaints
+            </span>
+            <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: lowCount > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle color={lowCount > 0 ? '#ef4444' : '#10b981'} size={18} />
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600' }}>COMPLAINTS (1-2★ ISSUES)</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '800', color: lowCount > 0 ? '#ef4444' : '#10b981', lineHeight: 1.2 }}>
-              {lowCount}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: lowCount > 0 ? '#ef4444' : '#10b981', fontWeight: '600', marginTop: '2px' }}>
-              {lowCount > 0 ? 'Cleaning action required' : 'All clear & spotless'}
-            </div>
+          <div style={{ fontSize: '1.85rem', fontWeight: '800', color: lowCount > 0 ? '#ef4444' : 'var(--text-primary)', marginTop: '0.4rem', lineHeight: 1 }}>
+            {lowCount}
           </div>
         </div>
       </div>
@@ -424,7 +559,7 @@ const FeedbackLogs = () => {
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
           <input
             type="text"
-            placeholder="Search by Machine ID, RO, Comment, or Phone..."
+            placeholder="Search by Machine, RO, OMC, Rating, Comment, Date..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -433,7 +568,7 @@ const FeedbackLogs = () => {
             style={{
               width: '100%',
               boxSizing: 'border-box',
-              padding: '0.65rem 1rem 0.65rem 2.4rem',
+              padding: '0.65rem 2.4rem 0.65rem 2.4rem',
               borderRadius: '8px',
               border: '1px solid var(--border-color)',
               background: 'var(--surface-bg)',
@@ -441,6 +576,31 @@ const FeedbackLogs = () => {
               fontSize: '0.85rem'
             }}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setCurrentPage(1);
+              }}
+              style={{
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '4px'
+              }}
+              title="Clear search"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         {/* Dropdown Filters */}

@@ -190,14 +190,14 @@ const PublicFeedback = () => {
 
   const machineId = paramMachineId || searchParams.get('machine') || searchParams.get('id') || 'SBP2T501';
 
-  // Language state: 'mr' (default), 'hi', or 'en'
+  // Language state: 'en' (default), 'mr', or 'hi'
   const [language, setLanguage] = useState(() => {
     const urlLang = searchParams.get('lang');
     if (urlLang && translations[urlLang]) return urlLang;
-    return 'mr';
+    return 'en';
   });
 
-  const t = translations[language] || translations.mr;
+  const t = translations[language] || translations.en;
 
   const [machineData, setMachineData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -241,7 +241,7 @@ const PublicFeedback = () => {
   const handleLanguageChange = (newLang) => {
     setLanguage(newLang);
     setSelectedReasons([]);
-    const newT = translations[newLang] || translations.mr;
+    const newT = translations[newLang] || translations.en;
     if (selectedOption) {
       const matched = newT.cleanlinessOptions.find(o => o.id === selectedOption);
       if (matched) setComment(matched.label);
@@ -394,9 +394,9 @@ const PublicFeedback = () => {
             }}>
               <Globe size={13} color="#94a3b8" style={{ marginLeft: '6px', marginRight: '2px' }} />
               {[
+                { code: 'en', label: 'English' },
                 { code: 'mr', label: 'मराठी' },
-                { code: 'hi', label: 'हिंदी' },
-                { code: 'en', label: 'English' }
+                { code: 'hi', label: 'हिंदी' }
               ].map(lang => {
                 const isActive = language === lang.code;
                 return (

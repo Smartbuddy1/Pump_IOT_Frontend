@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') || 'http://localhost:5000';
+const getSocketUrl = () => {
+  const envUrl = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_API_BASE_URL;
+  if (!envUrl || envUrl.startsWith('/')) {
+    return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000';
+  }
+  return envUrl.replace('/api/v1', '');
+};
 
-const socket = io(SOCKET_URL, {
+const socket = io(getSocketUrl(), {
   autoConnect: false, // Wait until we explicitly call connect()
 });
 

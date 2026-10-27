@@ -8,8 +8,8 @@ import { exportToPDF } from '../utils/exportUtils';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
 import { useAuth } from '../context/AuthContext';
-import { calculateMachineRating } from '../components/TopRatedMachinesCard';
 import { getConsolidatedAlerts } from '../utils/alertUtils';
+import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const Machines = () => {
   const location = useLocation();
@@ -492,9 +492,10 @@ const Machines = () => {
       const typeStr = String(machine.type || '').toLowerCase();
       const statusStr = String(machine.status || '').toLowerCase();
 
-      // 1. Direct ID matches
+      // 1. Direct ID & Last 3 Digits matches
       if (machineId === term) return true;
       if (machineId.includes(term)) return true;
+      if (matchesMachineQuery(machineId, term)) return true;
       if (cleanNum && (cleanNum === displayId || term === `#${displayId}` || term === `id ${displayId}`)) return true;
       if (cleanNum && cleanNum === mDbId) return true;
       if (cleanNum && cleanNum.length >= 2 && (cleanDigits.endsWith(cleanNum) || machineId.endsWith(cleanNum))) return true;
@@ -510,7 +511,7 @@ const Machines = () => {
       return searchWords.every(word => {
         const cw = word.replace(/^[#idmch\s:\-_]+/i, '').trim();
         if (cw && (cw === displayId || cw === mDbId)) return true;
-        if (machineId.includes(word)) return true;
+        if (machineId.includes(word) || matchesMachineQuery(machineId, word) || (cw && matchesMachineQuery(machineId, cw))) return true;
         if (roName.includes(word)) return true;
         if (clientName.includes(word)) return true;
         if (typeStr.includes(word)) return true;
@@ -1063,7 +1064,7 @@ const Machines = () => {
       return;
     }
 
-    const columns = ['MACHINE ID', 'CLIENT (OMC)', 'RO NAME', 'STATUS', 'LIVE TEMP', 'LIVE HUMIDITY', 'LIVE ODOUR', 'LIVE NH3', 'LIVE H2S', 'WATER LEVEL'];
+    const columns = ['MACHINE ID', 'OMC', 'RO NAME', 'STATUS', 'LIVE TEMP', 'LIVE HUMIDITY', 'LIVE ODOUR', 'LIVE NH3', 'LIVE H2S', 'WATER LEVEL'];
     const rows = filteredMachines.map(m => {
       const s = String(m.status || '').trim().toUpperCase();
       const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
@@ -1240,7 +1241,7 @@ const Machines = () => {
           <thead className="print-only-head">
             <tr style={{ borderBottom: '1.5px solid #1e293b', fontSize: '9pt', color: '#1e293b', textTransform: 'uppercase', backgroundColor: '#f1f5f9' }}>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>MACHINE ID</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700' }}>CLIENT (OMC)</th>
+              <th style={{ padding: '8px 10px', fontWeight: '700' }}>OMC</th>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>RO NAME</th>
               <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>STATUS</th>
               <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>RATING</th>
@@ -1484,7 +1485,7 @@ const Machines = () => {
 
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
-                      OMC (Petrol Company) <span style={{ color: '#ef4444' }}>*</span>
+                      OMC <span style={{ color: '#ef4444' }}>*</span>
                     </label>
                     {isSuperAdmin ? (
                       <select 

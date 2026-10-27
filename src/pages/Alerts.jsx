@@ -26,6 +26,7 @@ import PrintFooter from '../components/PrintFooter';
 import { useAuth } from '../context/AuthContext';
 import { getConsolidatedAlerts } from '../utils/alertUtils';
 import { defaultMachines } from '../services/mockStorage';
+import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const Alerts = () => {
   const { user } = useAuth();
@@ -145,7 +146,9 @@ const Alerts = () => {
       const status = String(alert.status || '').toLowerCase();
       const date = String(alert.date || alert.time || '').toLowerCase();
 
-      if (cleanNum && (cleanNum === alertId || cleanNum === mId || mName.endsWith(cleanNum))) {
+      if (cleanNum && (cleanNum === alertId || cleanNum === mId || cleanNum === mName || mName.endsWith(cleanNum))) {
+        matchesSearch = true;
+      } else if (matchesMachineQuery(mId, searchString) || matchesMachineQuery(mName, searchString) || (cleanNum && (matchesMachineQuery(mId, cleanNum) || matchesMachineQuery(mName, cleanNum)))) {
         matchesSearch = true;
       } else if (mId.includes(searchString) || mName.includes(searchString) || ro.includes(searchString) || type.includes(searchString) || issue.includes(searchString) || severity.includes(searchString) || status.includes(searchString) || date.includes(searchString)) {
         matchesSearch = true;
@@ -153,7 +156,8 @@ const Alerts = () => {
         const searchWords = searchString.split(/\s+/).filter(Boolean);
         matchesSearch = searchWords.every(word => {
           const cw = word.replace(/^[#id\s:\-_]+/i, '').trim();
-          if (cw && (cw === alertId || cw === mId || mName.endsWith(cw))) return true;
+          if (cw && (cw === alertId || cw === mId || cw === mName || mName.endsWith(cw))) return true;
+          if (matchesMachineQuery(mId, word) || matchesMachineQuery(mName, word) || (cw && (matchesMachineQuery(mId, cw) || matchesMachineQuery(mName, cw)))) return true;
           return mId.includes(word) || mName.includes(word) || ro.includes(word) || type.includes(word) || issue.includes(word) || severity.includes(word) || status.includes(word);
         });
       }

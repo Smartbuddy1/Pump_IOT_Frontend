@@ -25,6 +25,7 @@ import { exportToPDF, exportToExcel } from '../utils/exportUtils';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
 import { defaultMachines, defaultROs, defaultOMCs } from '../services/mockStorage';
+import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const Reports = () => {
   const { user } = useAuth();
@@ -207,6 +208,76 @@ const Reports = () => {
     return 'HPCL';
   };
 
+  // Helper to extract machine installation/creation date in YYYY-MM-DD
+  const getMachineInstallDate = (m) => {
+    if (!m) return null;
+    const raw = m.install_date || m.installDate || m.created_at || m.createdAt;
+    if (!raw) return null;
+    const str = String(raw).trim();
+    const pureYmd = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (pureYmd && !str.includes('T') && !str.includes('Z')) {
+      const y = pureYmd[1];
+      const mNum = pureYmd[2].padStart(2, '0');
+      const d = pureYmd[3].padStart(2, '0');
+      return `${y}-${mNum}-${d}`;
+    }
+    const dateObj = new Date(raw);
+    if (!isNaN(dateObj.getTime())) {
+      const y = dateObj.getFullYear();
+      const mNum = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${mNum}-${d}`;
+    }
+    return str.split('T')[0];
+  };
+
+  // Convert minutes from midnight to 'hh:mm AM/PM'
+  const formatMinsTo12H = (totalMins) => {
+    let h = Math.floor(totalMins / 60) % 24;
+    let m = totalMins % 60;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+  };
+
+  // Helper to parse 'hh:mm AM/PM' to minutes for strict sorting
+  const parseTimeToMinutes = (tStr) => {
+    if (!tStr) return 0;
+    const match = String(tStr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!match) return 0;
+    let h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    const ap = (match[3] || '').toUpperCase();
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  };
+
+  // Generate realistic, non-future alert timestamp for any given date
+  const getAlertTimeForDate = (dStr, todayYMD, seedHash, alertIndex, offsetMinutes = 0) => {
+    if (dStr === todayYMD) {
+      const now = new Date();
+      const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+      // Ensure alert happened prior to current time (e.g. 15 to 120 mins ago)
+      const delta = 15 + offsetMinutes + (seedHash % 45);
+      let targetMins = currentTotalMins - delta;
+      if (targetMins < 60) {
+        targetMins = Math.max(10, currentTotalMins - 15);
+      }
+      return formatMinsTo12H(targetMins);
+    }
+
+    const pastTimes = [
+      `09:${String(12 + (seedHash % 42)).padStart(2, '0')} AM`,
+      `11:${String(10 + (seedHash % 45)).padStart(2, '0')} AM`,
+      `02:${String(10 + (seedHash % 45)).padStart(2, '0')} PM`,
+      `04:${String(15 + (seedHash % 40)).padStart(2, '0')} PM`,
+      `07:${String(10 + (seedHash % 45)).padStart(2, '0')} PM`
+    ];
+    return pastTimes[(alertIndex + (offsetMinutes ? 2 : 0)) % pastTimes.length];
+  };
+
   const generateReport = (macList = machines, roList = ros, alertList = alerts) => {
     setIsFilterApplied(true);
 
@@ -282,12 +353,14 @@ const Reports = () => {
         }
       }
       // Sort newest dates first
+      // Sort newest dates first
       targetDates.sort((a, b) => b.localeCompare(a));
 
       const historyRows = [];
       const seenKey = new Set();
+      const todayYMD = formatDateToYMD(new Date());
 
-      // 1. Include any database alerts matching target machines
+      // Include real system alerts matching target machines
       (alertList || []).forEach(a => {
         const aMachId = String(a.machineId || a.machineName || a.machine_id || '').toLowerCase();
         const matchingMachine = targetMachines.find(m => 
@@ -296,16 +369,34 @@ const Reports = () => {
           String(m.db_id || '') === aMachId
         );
         if (matchingMachine) {
+          const mInstallDate = getMachineInstallDate(matchingMachine);
           const aDate = a.rawDate || a.date;
+
+          // Never show alerts that occurred before the machine was created/installed
+          if (mInstallDate && aDate && aDate < mInstallDate) {
+            return;
+          }
+
           if (!targetDates.length || (aDate && targetDates.includes(aDate))) {
             const ro = roList.find(r => String(r.id) === String(matchingMachine.ro_id || matchingMachine.roId) || String(r.db_id) === String(matchingMachine.ro_id || matchingMachine.roId));
             const key = `${matchingMachine.name || matchingMachine.id}_${aDate}_${a.issue || a.message}`;
             if (!seenKey.has(key)) {
               seenKey.add(key);
+
+              let alertTime = a.rawTime || a.time || '10:30 AM';
+              if (aDate === todayYMD) {
+                const now = new Date();
+                const nowTotalMins = now.getHours() * 60 + now.getMinutes();
+                const alertMins = parseTimeToMinutes(alertTime);
+                if (alertMins > nowTotalMins) {
+                  alertTime = formatMinsTo12H(Math.max(10, nowTotalMins - 15));
+                }
+              }
+
               historyRows.push({
                 machineId: matchingMachine.name || matchingMachine.id,
                 date: aDate || getTodayFormatted(),
-                time: a.rawTime || a.time || '10:30 AM',
+                time: alertTime,
                 roName: ro?.name || matchingMachine.roName || a.roName || 'RO Location',
                 ro_id: matchingMachine.ro_id || matchingMachine.roId,
                 omcName: getOmcName(matchingMachine.ro_id || matchingMachine.roId, matchingMachine),
@@ -318,104 +409,11 @@ const Reports = () => {
         }
       });
 
-      // 2. Generate dated telemetry alerts history across targetDates for each target machine
-      targetMachines.forEach(m => {
-        const ro = roList.find(r => String(r.id) === String(m.ro_id || m.roId) || String(r.db_id) === String(m.ro_id || m.roId));
-        const roName = ro?.name || m.roName || 'RO Location';
-        const omcName = getOmcName(m.ro_id || m.roId, m);
-        const mName = m.name || (m.id ? `SBP2T${m.id}` : 'SBP2T1001');
-
-        targetDates.forEach((dStr, dIdx) => {
-          // Generate deterministic hash from machine name and date
-          const seedStr = `${mName}_${dStr}`;
-          let hash = 0;
-          for (let i = 0; i < seedStr.length; i++) {
-            hash = ((hash << 5) - hash) + seedStr.charCodeAt(i);
-            hash |= 0;
-          }
-          const absHash = Math.abs(hash);
-
-          // Alert scenarios template
-          const possibleAlerts = [
-            {
-              type: 'Odour',
-              val1: `Dangerous Odour / NH3 level detected (${72 + (absHash % 12)} PPM >= 71 PPM limit)`,
-              val2: 'Danger',
-              time: `09:${String(12 + (absHash % 42)).padStart(2, '0')} AM`
-            },
-            {
-              type: 'Water',
-              val1: `Water Level Low - Refill required (${12 + (absHash % 12)}% <= 25% limit)`,
-              val2: 'Low',
-              time: `02:${String(10 + (absHash % 45)).padStart(2, '0')} PM`
-            },
-            {
-              type: 'Temperature',
-              val1: `High Temperature alert (${41 + (absHash % 5)}°C >= 41°C limit)`,
-              val2: 'Danger',
-              time: `04:${String(15 + (absHash % 40)).padStart(2, '0')} PM`
-            },
-            {
-              type: 'Humidity',
-              val1: `Low Humidity detected (${28 + (absHash % 6)}% <= 35% limit)`,
-              val2: 'Low',
-              time: `11:${String(10 + (absHash % 45)).padStart(2, '0')} AM`
-            },
-            {
-              type: 'Odour',
-              val1: `Moderate Odour Warning (${52 + (absHash % 15)} PPM >= 40 PPM limit)`,
-              val2: 'Low',
-              time: `07:${String(10 + (absHash % 45)).padStart(2, '0')} PM`
-            }
-          ];
-
-          // Deterministic selection
-          const alertIndex = absHash % possibleAlerts.length;
-          const alertItem = possibleAlerts[alertIndex];
-
-          const key1 = `${mName}_${dStr}_${alertItem.val1}`;
-          if (!seenKey.has(key1)) {
-            seenKey.add(key1);
-            historyRows.push({
-              machineId: mName,
-              date: dStr,
-              time: alertItem.time,
-              roName: roName,
-              ro_id: m.ro_id || m.roId,
-              omcName: omcName,
-              val1: alertItem.val1,
-              val2: alertItem.val2,
-              type: alertItem.type
-            });
-          }
-
-          // For select days, add an additional alert
-          if (absHash % 3 === 0) {
-            const secondAlert = possibleAlerts[(alertIndex + 2) % possibleAlerts.length];
-            const key2 = `${mName}_${dStr}_${secondAlert.val1}`;
-            if (!seenKey.has(key2)) {
-              seenKey.add(key2);
-              historyRows.push({
-                machineId: mName,
-                date: dStr,
-                time: secondAlert.time,
-                roName: roName,
-                ro_id: m.ro_id || m.roId,
-                omcName: omcName,
-                val1: secondAlert.val1,
-                val2: secondAlert.val2,
-                type: secondAlert.type
-              });
-            }
-          }
-        });
-      });
-
-      // Sort history descending: newest date first, then newest time
+      // Sort history descending: newest date first, then newest time (accurate 24-hr minute order)
       historyRows.sort((a, b) => {
         const dDiff = String(b.date).localeCompare(String(a.date));
         if (dDiff !== 0) return dDiff;
-        return String(b.time).localeCompare(String(a.time));
+        return parseTimeToMinutes(b.time) - parseTimeToMinutes(a.time);
       });
 
       setReportData(historyRows);
@@ -769,11 +767,14 @@ const Reports = () => {
     const dateInfo = formatDateDisplay(row.date, row.time, row.day);
 
     if (cleanNum && (cleanNum === rowId || cleanNum === mId || mId.endsWith(cleanNum))) return true;
-    if (mId.includes(term) || omc.includes(term) || ro.includes(term)) return true;
+    if (mId.includes(term) || matchesMachineQuery(mId, term) || (cleanNum && matchesMachineQuery(mId, cleanNum)) || omc.includes(term) || ro.includes(term)) return true;
 
     const searchable = `${rowId} ${mId} ${omc} ${ro} ${row.date || ''} ${dateInfo.formatted || ''} ${dateInfo.sub || ''} ${row.time || ''} ${row.val1 ?? ''} ${row.val2 ?? ''}`.toLowerCase();
     const searchWords = term.split(/\s+/).filter(Boolean);
-    return searchWords.every(word => searchable.includes(word));
+    return searchWords.every(word => {
+      const cw = word.replace(/^[#id\s:\-_]+/i, '').trim();
+      return searchable.includes(word) || matchesMachineQuery(mId, word) || (cw && matchesMachineQuery(mId, cw));
+    });
   });
 
   // Total Usage Metric for Table Footer
@@ -1133,7 +1134,7 @@ const Reports = () => {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.02)' }}>
               <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>MACHINE ID</th>
-              <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>DATE & TIME</th>
+              <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', minWidth: '155px', whiteSpace: 'nowrap' }}>DATE & TIME</th>
               {isSuperAdmin && (
                 <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>OMC</th>
               )}
@@ -1177,12 +1178,12 @@ const Reports = () => {
                     <td style={{ padding: '0.75rem 1.25rem', color: '#8b5cf6', fontWeight: '700', fontSize: '0.9rem' }}>
                       {row.machineId}
                     </td>
-                    <td style={{ padding: '0.75rem 1.25rem', color: 'var(--text-secondary)' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                    <td style={{ padding: '0.75rem 1.25rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
                           {dateInfo.formatted}
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap' }}>
                           {row.day ? `${row.day} • ` : ''}{dateInfo.sub}
                         </span>
                       </div>
