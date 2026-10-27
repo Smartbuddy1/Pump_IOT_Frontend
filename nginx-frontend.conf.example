@@ -1,0 +1,28 @@
+# ================================================================
+#  AWS EC2 - FRONTEND NGINX CONFIGURATION (Standalone Frontend EC2)
+#  File: /etc/nginx/sites-available/petroleum-frontend
+# ================================================================
+
+server {
+    listen 80;
+    server_name _; # किंवा तुमचा Frontend EC2 चा Public IP / Domain
+
+    # Frontend Build Files चा path
+    root /var/www/frontend/dist; # किंवा /home/ubuntu/Pump_IOT_Frontend/dist
+    index index.html;
+
+    client_max_body_size 20M;
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # React Router SPA routes support
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Static Assets Caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}

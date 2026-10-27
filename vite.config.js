@@ -13,15 +13,15 @@ export default defineConfig(({ mode }) => {
     cors: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: env.VITE_SERVER_URL || 'http://13.232.110.133',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: env.VITE_SERVER_URL || 'http://13.232.110.133',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: env.VITE_SERVER_URL || 'http://13.232.110.133',
         ws: true,
       },
       '/s3-proxy': {
