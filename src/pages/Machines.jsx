@@ -2313,7 +2313,11 @@ const Machines = () => {
             ); })()}
 
             {modalType === 'qr' && selectedItem && (() => {
-              const feedbackUrl = `${window.location.origin}/feedback/${selectedItem.id || selectedItem.name}`;
+              const basePath = (import.meta.env.BASE_URL || '/').endsWith('/') 
+                ? (import.meta.env.BASE_URL || '/') 
+                : `${import.meta.env.BASE_URL}/`;
+              const machineParam = encodeURIComponent(selectedItem.name || selectedItem.id);
+              const feedbackUrl = `${window.location.origin}${basePath}feedback/${machineParam}`;
               return (
                 <div style={{ textAlign: 'center', padding: '0.5rem 0' }}>
                   <div style={{ 
