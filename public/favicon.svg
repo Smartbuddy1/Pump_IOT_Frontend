@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+
+    <!-- Fuel Drop Gradient (Flame & Fuel Blue to Cyan) -->
+    <linearGradient id="dropGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+
+    <!-- Emerald Telemetry Pulse Gradient -->
+    <linearGradient id="pulseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+
+    <!-- Shadow filter for depth -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#38bdf8" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Circular Outer App Badge -->
+  <rect width="64" height="64" rx="16" fill="url(#bgGrad)" />
+  <rect width="62" height="62" x="1" y="1" rx="15" fill="none" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1.5" />
+
+  <!-- Stylized Petroleum Droplet with Flame Shape -->
+  <path 
+    d="M 32 11 
+       C 32 11, 46 27, 46 37 
+       C 46 45.28, 39.73 51, 32 51 
+       C 24.27 51, 18 45.28, 18 37 
+       C 18 27, 32 11, 32 11 Z" 
+    fill="url(#dropGrad)" 
+    filter="url(#glow)"
+  />
+
+  <!-- Dynamic Energy Core Accent inside Droplet -->
+  <path 
+    d="M 32 19 
+       C 32 19, 41 30, 41 38 
+       C 41 43.5, 37 47, 32 47 
+       C 27 47, 23 43.5, 23 38 
+       C 23 30, 32 19, 32 19 Z" 
+    fill="#ffffff" 
+    opacity="0.18"
+  />
+
+  <!-- IoT Telemetry Radar / Signal Waves -->
+  <!-- Inner IoT Pulse Ring -->
+  <circle cx="32" cy="38" r="4" fill="url(#pulseGrad)" />
+  <circle cx="32" cy="38" r="4" fill="#ffffff" opacity="0.3" />
+
+  <!-- Center Telemetry Beacon Dot -->
+  <circle cx="32" cy="38" r="1.8" fill="#ffffff" />
+
+  <!-- Broadcast Signal Arcs -->
+  <path 
+    d="M 24 33 A 10 10 0 0 1 40 33" 
+    fill="none" 
+    stroke="url(#pulseGrad)" 
+    stroke-width="2.5" 
+    stroke-linecap="round" 
+    opacity="0.9"
+  />
+
+  <path 
+    d="M 20 28 A 16 16 0 0 1 44 28" 
+    fill="none" 
+    stroke="#38bdf8" 
+    stroke-width="2" 
+    stroke-linecap="round" 
+    opacity="0.75"
+  />
+</svg>
