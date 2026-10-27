@@ -69,7 +69,7 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <Router>
+        <Router basename={import.meta.env.BASE_URL}>
           <ScrollToTop />
           <ToastContainer position="top-right" autoClose={3000} />
           <Routes>
