@@ -1,23 +1,25 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import OMCDashboard from './pages/OMCDashboard';
-import CreateOMC from './pages/CreateOMC';
-import CreateRO from './pages/CreateRO';
-import Machines from './pages/Machines';
-import Alerts from './pages/Alerts';
-import Reports from './pages/Reports';
-import Analysis from './pages/Analysis';
-import Diagnosis from './pages/Diagnosis';
-import PublicFeedback from './pages/PublicFeedback';
-import FeedbackLogs from './pages/FeedbackLogs';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useSocket } from './hooks/useSocket';
+
+// Enterprise Code-Splitting (Lazy Loading pages on demand)
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const OMCDashboard = lazy(() => import('./pages/OMCDashboard'));
+const CreateOMC = lazy(() => import('./pages/CreateOMC'));
+const CreateRO = lazy(() => import('./pages/CreateRO'));
+const Machines = lazy(() => import('./pages/Machines'));
+const Alerts = lazy(() => import('./pages/Alerts'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Analysis = lazy(() => import('./pages/Analysis'));
+const Diagnosis = lazy(() => import('./pages/Diagnosis'));
+const PublicFeedback = lazy(() => import('./pages/PublicFeedback'));
+const FeedbackLogs = lazy(() => import('./pages/FeedbackLogs'));
 
 // Automatically reset scroll to top on route change to eliminate bottom footer flashes
 const ScrollToTop = () => {
@@ -28,6 +30,30 @@ const ScrollToTop = () => {
   return null;
 };
 
+// Sleek fallback loading spinner for code-split chunks
+const LoadingFallback = () => (
+  <div style={{
+    minHeight: '60vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '16px',
+    color: 'var(--text-secondary, #64748b)'
+  }}>
+    <div style={{
+      width: '40px',
+      height: '40px',
+      border: '3px solid rgba(0, 102, 204, 0.15)',
+      borderTopColor: '#0066cc',
+      borderRadius: '50%',
+      animation: 'spin 0.8s linear infinite'
+    }} />
+    <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Loading module...</span>
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  </div>
+);
+
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -35,7 +61,7 @@ const ProtectedRoute = ({ children }) => {
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-color)', color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: '600' }}>
-        Loading...
+        Loading session...
       </div>
     );
   }
@@ -47,7 +73,7 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   const { socket } = useSocket();
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleNewAlert = (data) => {
       toast.error(`ALERT [${data.machineId}]: ${data.alertMessage}`, {
         position: "top-right",
@@ -72,32 +98,33 @@ function App() {
         <Router basename={import.meta.env.BASE_URL}>
           <ScrollToTop />
           <ToastContainer position="top-right" autoClose={3000} />
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/feedback" element={<PublicFeedback />} />
-            <Route path="/feedback/:machineId" element={<PublicFeedback />} />
-            
-            {/* Protected Layout Routes */}
-            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-              {/* Redirect / to /dashboard */}
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="omc-dashboard" element={<OMCDashboard />} />
-              <Route path="omc" element={<CreateOMC />} />
-              <Route path="ro" element={<CreateRO />} />
-              <Route path="machine" element={<Machines />} />
-              <Route path="alerts" element={<Alerts />} />
-              <Route path="reports" element={<Reports />} />
-              <Route path="analysis" element={<Analysis />} />
-              <Route path="diagnosis" element={<Diagnosis />} />
-              <Route path="feedbacks" element={<FeedbackLogs />} />
-              {/* <Route path="settings" element={<Settings />} /> */}
-            </Route>
-            
-            {/* Fallback - unauthenticated users go to login */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/feedback" element={<PublicFeedback />} />
+              <Route path="/feedback/:machineId" element={<PublicFeedback />} />
+              
+              {/* Protected Layout Routes */}
+              <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                {/* Redirect / to /dashboard */}
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="omc-dashboard" element={<OMCDashboard />} />
+                <Route path="omc" element={<CreateOMC />} />
+                <Route path="ro" element={<CreateRO />} />
+                <Route path="machine" element={<Machines />} />
+                <Route path="alerts" element={<Alerts />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="analysis" element={<Analysis />} />
+                <Route path="diagnosis" element={<Diagnosis />} />
+                <Route path="feedbacks" element={<FeedbackLogs />} />
+              </Route>
+              
+              {/* Fallback - unauthenticated users go to login */}
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Suspense>
         </Router>
       </AuthProvider>
     </ErrorBoundary>

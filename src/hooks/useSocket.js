@@ -19,11 +19,28 @@ export const useSocket = () => {
   useEffect(() => {
     socket.connect();
 
-    socket.on('connect', () => setIsConnected(true));
+    const handleConnect = () => {
+      setIsConnected(true);
+      try {
+        const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+        if (storedUser) {
+          const u = JSON.parse(storedUser);
+          socket.emit('join_tenant', {
+            role: u.role,
+            omcId: u.omc_id || u.omcId,
+            roId: u.ro_id || u.roId
+          });
+        }
+      } catch (e) {
+        // ignore parse error
+      }
+    };
+
+    socket.on('connect', handleConnect);
     socket.on('disconnect', () => setIsConnected(false));
 
     return () => {
-      socket.off('connect');
+      socket.off('connect', handleConnect);
       socket.off('disconnect');
     };
   }, []);
