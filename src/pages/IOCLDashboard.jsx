@@ -228,13 +228,15 @@ const IOCLDashboard = () => {
     },
   ];
 
+  const dashboardTitle = user?.roName || user?.name || 'Retail Outlet';
+
   return (
     <div style={{ padding: '0.5rem 2rem 2rem 2rem', animation: 'fadeIn 0.5s ease-in', maxWidth: '1400px', margin: '0 auto', color: 'var(--text-primary)' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            IOCL <span style={{ color: '#3b82f6' }}>Dashboard</span>
+            {dashboardTitle} <span style={{ color: '#3b82f6' }}>Dashboard</span>
           </h1>
         </div>
       </div>

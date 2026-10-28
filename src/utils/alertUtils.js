@@ -23,8 +23,6 @@ export const getConsolidatedAlerts = ({
   const userOmcId = user?.omcId || user?.omc_id;
 
   let activeMachinesForUser = machines;
-  let targetRoName = 'abc';
-  let targetRoId = '4';
   let filteredRawAlerts = [...rawAlerts];
 
   if (isOmcAdmin) {
@@ -32,34 +30,18 @@ export const getConsolidatedAlerts = ({
     const myOmc = omcs.find(o => 
       (userOmcId && (String(o.id) === String(userOmcId) || String(o.db_id) === String(userOmcId))) ||
       (userContact && (String(o.contact || '').trim() === userContact || String(o.credentials?.username || '').trim() === userContact))
-    ) || (userOmcId ? { id: userOmcId } : (omcs.find(o => String(o.id) === '1' || String(o.name).toLowerCase() === 'iocl') || omcs[0] || { id: 1 }));
+    ) || (userOmcId ? { id: userOmcId } : (omcs.length > 0 ? omcs[0] : null));
 
-    const myOmcId = String(myOmc?.id || userOmcId || '1');
-    let myRos = ros.filter(r => String(r.omc_id) === myOmcId || String(r.omcId) === myOmcId);
-    if (myRos.length === 0 && ros.length > 0) {
-      myRos = ros;
-    }
-
-    const abcRo = myRos.find(r => r.name?.toLowerCase() === 'abc' || String(r.id) === '4');
-    const assignedRo = abcRo || (myRos.length > 0 ? (myRos.find(r => {
-      const n = (r.name || '').toLowerCase();
-      return n !== 'radha' && n !== 'hwejjk' && n !== 'iocl';
-    }) || myRos[0]) : { id: 4, name: 'abc' });
-
-    targetRoId = String(assignedRo?.id || '4');
-    targetRoName = String(assignedRo?.name || 'abc');
-
+    const myOmcId = String(myOmc?.id || userOmcId || '');
+    let myRos = myOmcId ? ros.filter(r => String(r.omc_id) === myOmcId || String(r.omcId) === myOmcId) : ros;
     const myRoIdsSet = new Set(myRos.map(r => String(r.id)));
-    myRoIdsSet.add(targetRoId);
-    myRoIdsSet.add('4');
 
     activeMachinesForUser = machines.filter(m => {
       const mRo = String(m.ro_id || m.roId || '');
-      const mRoName = String(m.roName || m.ro_name || '').toLowerCase();
-      return myRoIdsSet.has(mRo) || mRoName === targetRoName.toLowerCase();
+      return myRoIdsSet.has(mRo);
     });
 
-    if (activeMachinesForUser.length === 0) {
+    if (activeMachinesForUser.length === 0 && machines.length > 0 && myRos.length === 0) {
       activeMachinesForUser = machines;
     }
 
@@ -69,16 +51,26 @@ export const getConsolidatedAlerts = ({
     const omcMatchedIncoming = filteredRawAlerts.filter(a => {
       const aMid = String(a.machine_id || a.machineId || a.machineName || '').toLowerCase();
       const aRoId = String(a.ro_id || a.roId || '');
-      const aRoName = String(a.ro || a.roName || '').toLowerCase();
 
       return validMachineNamesSet.has(aMid) || 
              validMachineIdsSet.has(aMid) || 
-             myRoIdsSet.has(aRoId) || 
-             aRoName === targetRoName.toLowerCase();
+             myRoIdsSet.has(aRoId);
     });
 
     if (omcMatchedIncoming.length > 0) {
       filteredRawAlerts = omcMatchedIncoming;
+    }
+  } else if (isRoUser) {
+    const userRoId = String(user?.roId || user?.ro_id || '');
+    if (userRoId) {
+      activeMachinesForUser = machines.filter(m => String(m.ro_id || m.roId || '') === userRoId);
+      const validNames = new Set(activeMachinesForUser.map(m => String(m.name || m.id).toLowerCase()));
+      const validIds = new Set(activeMachinesForUser.map(m => String(m.db_id || m.id || '').toLowerCase()));
+      filteredRawAlerts = filteredRawAlerts.filter(a => {
+        const aMid = String(a.machine_id || a.machineId || a.machineName || '').toLowerCase();
+        const aRoId = String(a.ro_id || a.roId || '');
+        return validNames.has(aMid) || validIds.has(aMid) || aRoId === userRoId;
+      });
     }
   }
 
@@ -163,8 +155,8 @@ export const getConsolidatedAlerts = ({
   activeMachinesForUser.forEach(m => {
     const mId = m.name || m.id;
     const matchedRo = ros.find(r => String(r.id) === String(m.ro_id || m.roId) || r.name === m.roName);
-    const mRoName = matchedRo ? matchedRo.name : (m.roName || 'divya');
-    const mRoId = matchedRo ? matchedRo.id : (m.ro_id || m.roId || '4');
+    const mRoName = matchedRo ? matchedRo.name : (m.roName || 'Retail Outlet');
+    const mRoId = matchedRo ? matchedRo.id : (m.ro_id || m.roId || '');
     const now = new Date();
     const nowIso = now.toISOString();
 

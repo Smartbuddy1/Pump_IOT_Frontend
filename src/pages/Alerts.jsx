@@ -24,11 +24,13 @@ import { exportToPDF } from '../utils/exportUtils';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../hooks/useSocket';
 import { getConsolidatedAlerts } from '../utils/alertUtils';
 import { matchesMachineQuery } from '../utils/machineSearchUtils';
 
 const Alerts = () => {
   const { user } = useAuth();
+  const { socket } = useSocket();
   const isSuperAdmin = user?.role === 'Super Admin';
   const isOmcAdmin = user?.role === 'OMC Admin' || String(user?.role || '').toLowerCase().includes('omc');
   const isRoUser = !isOmcAdmin && !isSuperAdmin && (
@@ -113,8 +115,23 @@ const Alerts = () => {
       }
     }
 
-    return () => clearInterval(interval);
-  }, []);
+    const handleSocketAlert = () => {
+      fetchAlerts();
+    };
+
+    if (socket) {
+      socket.on('new_alert', handleSocketAlert);
+      socket.on('machine_status_update', handleSocketAlert);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (socket) {
+        socket.off('new_alert', handleSocketAlert);
+        socket.off('machine_status_update', handleSocketAlert);
+      }
+    };
+  }, [socket]);
 
   const updateAlertStatus = async (id, newStatus) => {
     try {

@@ -193,13 +193,9 @@ const OMCDashboard = () => {
     ? allRos.filter(r => r && (String(r.omc_id) === String(targetOmcId) || String(r.omcId) === String(targetOmcId)))
     : (isOmcAdmin ? [] : allRos);
 
-  const abcRo = filteredROs.find(r => r?.name?.toLowerCase() === 'abc' || String(r?.id) === '4');
-  const starterRo = abcRo || (filteredROs.length > 0 ? (filteredROs.find(r => {
-    const n = (r?.name || '').toLowerCase();
-    return n !== 'radha' && n !== 'hwejjk' && n !== 'iocl';
-  }) || filteredROs[0]) : { id: 4, name: 'abc' });
-  const actualRoName = starterRo?.name || 'abc';
-  const targetRoId = String(starterRo?.id || '4');
+  const starterRo = filteredROs.length > 0 ? filteredROs[0] : null;
+  const actualRoName = starterRo?.name || 'Retail Outlet';
+  const targetRoId = starterRo ? String(starterRo.id) : '';
 
   const validRoIds = new Set(filteredROs.filter(Boolean).map(r => String(r.id)));
   filteredROs.forEach(r => {
@@ -212,14 +208,12 @@ const OMCDashboard = () => {
         if (!m) return false;
         const mRo = String(m.ro_id || m.roId || '');
         const mRoName = String(m.roName || m.ro_name || '').toLowerCase();
-        if (validRoIds.has(mRo) || validRoIds.has(mRoName)) return true;
-        if (isOmcAdmin && (mRo === '1' || mRo === '4' || mRoName.includes('abc') || mRoName.includes('pertoleam') || mRoName.includes('divya'))) return true;
-        return isOmcAdmin;
+        return validRoIds.has(mRo) || validRoIds.has(mRoName);
       })
     : allMachines;
 
-  if (activeMachines.length === 0 && allMachines.length > 0) {
-    activeMachines = isOmcAdmin ? allMachines : allMachines;
+  if (activeMachines.length === 0 && allMachines.length > 0 && filteredROs.length === 0) {
+    activeMachines = allMachines;
   }
 
   const filteredMachines = activeMachines;

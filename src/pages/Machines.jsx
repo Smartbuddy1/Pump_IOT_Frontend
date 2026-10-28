@@ -463,9 +463,7 @@ const Machines = () => {
       const omcRo = roList.find(r => String(r.omc_id || r.omcId) === String(targetOmcId));
       if (omcRo) return omcRo;
     }
-    const abcMatch = roList.find(r => r.name?.toLowerCase() === 'abc' || String(r.id) === '4');
-    if (abcMatch) return abcMatch;
-    return roList[0] || { id: 4, name: 'abc' };
+    return roList[0] || null;
   }, [user, roList, targetOmcId]);
 
   const filteredMachines = (() => {
@@ -1558,7 +1556,7 @@ const Machines = () => {
                       <div style={{ position: 'relative' }}>
                         <input 
                           type="text" 
-                          value={modalType === 'edit' && formData.roId ? (getRoName(formData.roId) || specificRo?.name || 'abc') : (specificRo?.name || 'abc')} 
+                          value={modalType === 'edit' && formData.roId ? (getRoName(formData.roId) || specificRo?.name || 'Retail Outlet') : (specificRo?.name || 'Retail Outlet')} 
                           readOnly 
                           disabled
                           style={{ 

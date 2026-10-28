@@ -49,29 +49,41 @@ const Diagnosis = () => {
     if (!machineId.trim()) return;
     setLoading(true);
     
-    // Find machine details
-    const foundMachine = machines.find(m => m.id.toLowerCase() === machineId.toLowerCase());
+    const cleanSearch = machineId.trim().toLowerCase();
+    // Find machine details safely supporting string/number IDs and names
+    const foundMachine = machines.find(m => 
+      String(m.name || '').toLowerCase() === cleanSearch ||
+      String(m.id || '').toLowerCase() === cleanSearch ||
+      String(m.db_id || '') === cleanSearch
+    );
     
     let roName = 'Unknown RO';
     let clientName = 'Unknown Client';
     
     if (foundMachine) {
-      const ro = roList.find(r => r.id === foundMachine.roId);
+      const targetRoId = foundMachine.ro_id ?? foundMachine.roId;
+      const ro = roList.find(r => String(r.id) === String(targetRoId));
       if (ro) {
         roName = ro.name;
-        const omc = omcList.find(o => o.id === ro.omcId);
+        const targetOmcId = ro.omc_id ?? ro.omcId;
+        const omc = omcList.find(o => String(o.id) === String(targetOmcId));
         if (omc) clientName = omc.name;
       }
     }
 
+    const rawWater = String(foundMachine?.live_water ?? foundMachine?.liveWater ?? 'Normal');
+    const isWaterLow = rawWater.toLowerCase().includes('low') || (parseInt(rawWater, 10) <= 20 && !isNaN(parseInt(rawWater, 10)));
+    const rawTemp = foundMachine?.live_temp ?? foundMachine?.liveTemp;
+    const cleanTemp = rawTemp && rawTemp !== '--' ? (String(rawTemp).includes('°C') ? rawTemp : `${rawTemp}°C`) : '28°C';
+
     // Set simulated or actual details
     setMachineDetails({
-      id: foundMachine ? foundMachine.id : machineId.toUpperCase(),
-      client: clientName !== 'Unknown Client' ? clientName : 'Hindustan Petroleum (HPCL)', // Mock default if not found
-      location: roName !== 'Unknown RO' ? roName : 'Mumbai-Pune Expressway, RO-442',
-      status: foundMachine ? foundMachine.status : 'ACTIVE',
-      waterLevel: foundMachine && (String(foundMachine.liveWater).toLowerCase() === 'low' || (parseInt(foundMachine.liveWater) <= 20 && !isNaN(parseInt(foundMachine.liveWater)))) ? 'Low' : 'Normal',
-      temp: foundMachine && foundMachine.liveTemp !== '--' ? foundMachine.liveTemp : '34°C'
+      id: foundMachine ? (foundMachine.name || foundMachine.id) : machineId.toUpperCase(),
+      client: clientName !== 'Unknown Client' ? clientName : (omcList[0]?.name || 'Retail Client'),
+      location: roName !== 'Unknown RO' ? roName : (roList[0]?.name || 'Retail Outlet Location'),
+      status: foundMachine ? (foundMachine.status || 'ACTIVE') : 'ACTIVE',
+      waterLevel: isWaterLow ? 'Low' : 'Normal',
+      temp: cleanTemp
     });
 
     // Simulate API delay

@@ -95,13 +95,11 @@ const Analysis = () => {
       if (match) return match;
       const directMatch = ros.find(r => String(r.id) === String(user.roId) || String(r.db_id) === String(user.roId));
       if (directMatch) return directMatch;
-      return { id: user.roId, name: user.name || 'Sanjivani petroleum' };
+      return { id: user.roId, name: user.name || 'Retail Outlet' };
     }
-    const abcMatch = omcRos.find(r => r.name?.toLowerCase() === 'abc' || String(r.id) === '4');
-    if (abcMatch) return abcMatch;
-    return omcRos.find(r => r.name?.toLowerCase() !== 'radha') || omcRos[0] || { id: 4, name: 'abc' };
+    return omcRos[0] || (ros.length > 0 ? ros[0] : null);
   }, [user, omcRos, ros]);
-  const currentRoName = currentRo ? currentRo.name : (user?.name || 'Sanjivani petroleum');
+  const currentRoName = currentRo ? currentRo.name : (user?.name || 'Retail Outlet');
 
   useEffect(() => {
     if (isRoUser) {
@@ -745,7 +743,7 @@ const Analysis = () => {
         {
           hideTable: true,
           clientName: activeOmcName,
-          roName: selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || (String(selectedRo) === '4' ? 'abc' : 'pune pertoleam')) : 'All ROs',
+          roName: selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || 'Selected RO') : 'All ROs',
           machineName: activeMachineName,
           dateRange: filterType === 'Financial Year' ? financialYear : `${fromDate || 'Start'} to ${toDate || 'End'}`,
           generatedBy: user?.name ? `${user.name} (${user.role})` : (isOmcAdmin ? 'OMC Admin' : 'SuperAdmin (9284188705)'),
@@ -803,7 +801,7 @@ const Analysis = () => {
           }
           return selectedClient !== 'All' ? selectedClient : 'All';
         })()}
-        roName={isRoUser ? (currentRoName || 'abc') : (selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || (String(selectedRo) === '4' ? 'abc' : 'pune pertoleam')) : 'All ROs')}
+        roName={isRoUser ? (currentRoName || 'Retail Outlet') : (selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || 'Selected RO') : 'All ROs')}
         machineName={selectedMachine !== 'All' ? (machines.find(m => String(m.id) === String(selectedMachine))?.name || selectedMachine) : 'All Machines'}
         dateRange={filterType === 'Financial Year' ? financialYear : `${fromDate || 'Start'} to ${toDate || 'End'}`}
       />
@@ -883,7 +881,7 @@ const Analysis = () => {
               <input
                 type="text"
                 readOnly
-                value={currentRoName || 'abc'}
+                value={currentRoName || 'Retail Outlet'}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
@@ -908,7 +906,7 @@ const Analysis = () => {
               >
                 <option value="All">-- All ROs --</option>
                 {omcRos.map(ro => {
-                  const displayName = ro.name || (String(ro.id) === '4' ? 'abc' : 'pune pertoleam');
+                  const displayName = ro.name || `RO ${ro.id}`;
                   return (
                     <option key={ro.id} value={ro.id}>{displayName}</option>
                   );

@@ -7,13 +7,19 @@ server {
     listen 80;
     server_name _; # किंवा तुमचा Frontend EC2 चा Public IP / Domain
 
-    # Frontend Build Files चा path
-    root /var/www/frontend/dist; # किंवा /home/ubuntu/Pump_IOT_Frontend/dist
+    # Frontend Build Files चा path (Standard Docker Nginx path)
+    root /usr/share/nginx/html;
     index index.html;
 
     client_max_body_size 20M;
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Support /p2t/ subpath
+    location ^~ /p2t/ {
+        alias /usr/share/nginx/html/;
+        try_files $uri $uri/ /index.html;
+    }
 
     # React Router SPA routes support
     location / {

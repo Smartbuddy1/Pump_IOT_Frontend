@@ -664,7 +664,7 @@ const Reports = () => {
       rows,
       {
         clientName: activeOmcName,
-        roName: selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || (String(selectedRo) === '4' ? 'abc' : 'pune pertoleam')) : 'All ROs',
+        roName: selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || 'Selected RO') : 'All ROs',
         machineName: activeMachineName,
         dateRange: filterType === 'Financial Year' ? financialYear : `${fromDate || 'Start'} to ${toDate || 'End'}`,
         generatedBy: user?.name ? `${user.name} (${user.role})` : (isOmcAdmin ? 'OMC Admin' : 'SuperAdmin (9284188705)')
@@ -839,7 +839,7 @@ const Reports = () => {
           }
           return selectedClient !== 'All' ? selectedClient : 'All';
         })()}
-        roName={isRoUser ? (currentRoName || 'abc') : (selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || (String(selectedRo) === '4' ? 'abc' : 'pune pertoleam')) : 'All ROs')}
+        roName={isRoUser ? (currentRoName || 'Retail Outlet') : (selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || 'Selected RO') : 'All ROs')}
         machineName={selectedMachine !== 'All' ? (machines.find(m => String(m.id) === String(selectedMachine))?.name || selectedMachine) : 'All Machines'}
         dateRange={filterType === 'Financial Year' ? financialYear : `${fromDate || 'Start'} to ${toDate || 'End'}`}
       />
@@ -971,7 +971,7 @@ const Reports = () => {
               >
                 <option value="All">-- All ROs --</option>
                 {omcRos.map(ro => {
-                  const displayName = ro.name || (String(ro.id) === '4' ? 'abc' : 'pune pertoleam');
+                  const displayName = ro.name || `RO ${ro.id}`;
                   return (
                     <option key={ro.id} value={ro.id}>{displayName}</option>
                   );
