@@ -119,18 +119,46 @@ const OMCDashboard = () => {
     window.addEventListener('focus', handleDataChanged);
     window.addEventListener('pageshow', handleDataChanged);
 
-    socket.on('live_data_update', fetchData);
-    socket.on('new_alert', fetchData);
-    socket.on('new_feedback', fetchData);
+    // High-performance real-time telemetry state update without server re-fetching
+    const handleLiveTelemetry = (data) => {
+      if (!data || !data.machineId) return;
+      setRawMachines(prev => (Array.isArray(prev) ? prev : []).map(m => {
+        if (m.name?.toLowerCase() === String(data.machineId).toLowerCase()) {
+          return {
+            ...m,
+            live_temp: data.temperature || m.live_temp,
+            live_water: data.water || m.live_water,
+            live_humidity: data.humidity || m.live_humidity,
+            live_odour: data.odour || m.live_odour,
+            live_nh3: data.nh3 || m.live_nh3,
+            live_h2s: data.h2s || m.live_h2s,
+            status: 'Running'
+          };
+        }
+        return m;
+      }));
+    };
+
+    let debounceTimer = null;
+    const debouncedFetchData = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchData();
+      }, 2000);
+    };
+
+    socket.on('live_data_update', handleLiveTelemetry);
+    socket.on('new_alert', debouncedFetchData);
+    socket.on('new_feedback', debouncedFetchData);
 
     return () => {
       window.removeEventListener('app_data_updated', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
       window.removeEventListener('focus', handleDataChanged);
       window.removeEventListener('pageshow', handleDataChanged);
-      socket.off('live_data_update', fetchData);
-      socket.off('new_alert', fetchData);
-      socket.off('new_feedback', fetchData);
+      socket.off('live_data_update', handleLiveTelemetry);
+      socket.off('new_alert', debouncedFetchData);
+      socket.off('new_feedback', debouncedFetchData);
     };
   }, [location.key, location.pathname, user, socket]);
 

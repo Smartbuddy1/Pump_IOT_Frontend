@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Smartphone, Lock, Eye, EyeOff, Sun, Moon, AlertCircle, Loader2, CheckCircle2, ArrowRight, LockKeyhole } from 'lucide-react';
 import logoImg from '../assets/logo.png';
@@ -181,15 +181,15 @@ const Login = () => {
         </div>
       </div>
 
-      {/* Public Legal Links for Razorpay */}
+      {/* Public Legal Links for Enterprise Compliance */}
       <div style={{ position: 'absolute', bottom: '1.5rem', width: '100%', textAlign: 'center', color: '#64748b', fontSize: '0.85rem', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.75rem', zIndex: 10 }}>
-        <a href="/terms-conditions" style={{ color: 'inherit', textDecoration: 'underline' }}>Terms & Conditions</a>
+        <Link to="/terms-conditions" style={{ color: 'inherit', textDecoration: 'underline' }}>Terms & Conditions</Link>
         <span style={{ opacity: 0.5 }}>|</span>
-        <a href="/privacy-policy" style={{ color: 'inherit', textDecoration: 'underline' }}>Privacy Policy</a>
+        <Link to="/privacy-policy" style={{ color: 'inherit', textDecoration: 'underline' }}>Privacy Policy</Link>
         <span style={{ opacity: 0.5 }}>|</span>
-        <a href="/refund-policy" style={{ color: 'inherit', textDecoration: 'underline' }}>Refund Policy</a>
+        <Link to="/refund-policy" style={{ color: 'inherit', textDecoration: 'underline' }}>Refund Policy</Link>
         <span style={{ opacity: 0.5 }}>|</span>
-        <a href="/contact-us" style={{ color: 'inherit', textDecoration: 'underline' }}>Contact Us</a>
+        <Link to="/contact-us" style={{ color: 'inherit', textDecoration: 'underline' }}>Contact Us</Link>
       </div>
     </div>
   );

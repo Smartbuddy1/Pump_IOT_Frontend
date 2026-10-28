@@ -93,17 +93,10 @@ api.interceptors.response.use(
       return Promise.resolve({ data: mockRes, status: 200 });
     }
 
-    // For non-mock sessions, ONLY fall back to mock data for GET requests when offline/network error
+    // If backend is down or network fails during a real session, do not silently serve fake mock data
     if (!isMutation && (!error.response || error.code === 'ERR_NETWORK')) {
-      let url = originalRequest?.url || '';
-      let body = originalRequest?.data || {};
-      try {
-        if (typeof body === 'string') {
-          body = JSON.parse(body);
-        }
-      } catch (e) {}
-      const mockRes = handleMockRequest(url, method, body);
-      return Promise.resolve({ data: mockRes, status: 200 });
+      console.warn('[API Network Error] Backend server unreachable. Returning network error.');
+      return Promise.reject(error);
     }
 
     if (error.response?.status === 401 && !originalRequest._retry) {

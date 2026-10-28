@@ -142,9 +142,9 @@ const IOCLDashboard = () => {
       window.removeEventListener('focus', handleDataChanged);
       window.removeEventListener('pageshow', handleDataChanged);
       if (socket) {
-        socket.off('live_data_update', fetchData);
-        socket.off('new_alert', fetchData);
-        socket.off('new_feedback', fetchData);
+        socket.off('live_data_update', handleLiveTelemetry);
+        socket.off('new_alert', debouncedFetchData);
+        socket.off('new_feedback', debouncedFetchData);
       }
     };
   }, [location.key, location.pathname, user, socket]);

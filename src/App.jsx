@@ -20,6 +20,7 @@ const Analysis = lazy(() => import('./pages/Analysis'));
 const Diagnosis = lazy(() => import('./pages/Diagnosis'));
 const PublicFeedback = lazy(() => import('./pages/PublicFeedback'));
 const FeedbackLogs = lazy(() => import('./pages/FeedbackLogs'));
+const LegalPolicy = lazy(() => import('./pages/LegalPolicy'));
 
 // Automatically reset scroll to top on route change to eliminate bottom footer flashes
 const ScrollToTop = () => {
@@ -70,7 +71,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-function App() {
+function AppContent() {
   const { socket } = useSocket();
 
   useEffect(() => {
@@ -93,8 +94,8 @@ function App() {
   }, [socket]);
 
   return (
-    <ErrorBoundary>
-      <AuthProvider>
+    <>
+
         <Router basename={import.meta.env.BASE_URL}>
           <ScrollToTop />
           <ToastContainer position="top-right" autoClose={3000} />
@@ -104,6 +105,10 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/feedback" element={<PublicFeedback />} />
               <Route path="/feedback/:machineId" element={<PublicFeedback />} />
+              <Route path="/terms-conditions" element={<LegalPolicy />} />
+              <Route path="/privacy-policy" element={<LegalPolicy />} />
+              <Route path="/refund-policy" element={<LegalPolicy />} />
+              <Route path="/contact-us" element={<LegalPolicy />} />
               
               {/* Protected Layout Routes */}
               <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -126,6 +131,15 @@ function App() {
             </Routes>
           </Suspense>
         </Router>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
       </AuthProvider>
     </ErrorBoundary>
   );

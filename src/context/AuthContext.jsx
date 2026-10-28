@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
+import { socket, disconnectSocket } from '../hooks/useSocket';
 
 const AuthContext = createContext(null);
 
@@ -77,6 +78,17 @@ export const AuthProvider = ({ children }) => {
         sessionStorage.setItem('token', token);
         sessionStorage.setItem('user', JSON.stringify(normalizedUser));
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        // Re-authenticate socket with new token
+        try {
+          socket.auth = { token };
+          if (socket.connected) {
+            socket.disconnect().connect();
+          } else {
+            socket.connect();
+          }
+        } catch (e) {}
+
         setUser(normalizedUser);
         return { success: true, role: normalizedUser.role };
       }
@@ -95,6 +107,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    disconnectSocket();
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('user');
     localStorage.removeItem('token');
@@ -111,3 +124,4 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
+

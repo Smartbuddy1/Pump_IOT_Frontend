@@ -9,41 +9,63 @@ const getSocketUrl = () => {
   return envUrl.replace('/api/v1', '');
 };
 
-const socket = io(getSocketUrl(), {
-  autoConnect: false, // Wait until we explicitly call connect()
+export const socket = io(getSocketUrl(), {
+  autoConnect: false,
+  withCredentials: true,
+  transports: ['websocket', 'polling']
 });
+
+export const disconnectSocket = () => {
+  if (socket.connected) {
+    socket.disconnect();
+  }
+};
 
 export const useSocket = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {
-    socket.connect();
+    const token = sessionStorage.getItem('token') || localStorage.getItem('token');
+    socket.auth = { token: token || '' };
+
+    if (!socket.connected) {
+      socket.connect();
+    }
 
     const handleConnect = () => {
       setIsConnected(true);
+      // Notify backend to refresh room bindings for this socket connection
+      socket.emit('join_tenant');
+    };
+
+    const handleDisconnect = () => setIsConnected(false);
+
+    const handleTokenExpired = async () => {
       try {
-        const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
-        if (storedUser) {
-          const u = JSON.parse(storedUser);
-          socket.emit('join_tenant', {
-            role: u.role,
-            omcId: u.omc_id || u.omcId,
-            roId: u.ro_id || u.roId
-          });
+        const { default: api } = await import('../services/api');
+        const res = await api.get('/auth/refresh');
+        if (res.data?.success && res.data?.data?.token) {
+          const newToken = res.data.data.token;
+          sessionStorage.setItem('token', newToken);
+          socket.auth = { token: newToken };
+          socket.connect();
         }
       } catch (e) {
-        // ignore parse error
+        // Refresh token expired or revoked
       }
     };
 
     socket.on('connect', handleConnect);
-    socket.on('disconnect', () => setIsConnected(false));
+    socket.on('disconnect', handleDisconnect);
+    socket.on('token_expired', handleTokenExpired);
 
     return () => {
       socket.off('connect', handleConnect);
-      socket.off('disconnect');
+      socket.off('disconnect', handleDisconnect);
+      socket.off('token_expired', handleTokenExpired);
     };
   }, []);
 
   return { socket, isConnected };
 };
+
