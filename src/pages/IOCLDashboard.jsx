@@ -212,10 +212,6 @@ const IOCLDashboard = () => {
     { title: 'Today Feedbacks', value: todayFeedbacksCount.toString(), icon: MessageSquare, color: '#10b981', badgeText: `${todayFeedbacksCount} Received`, badgeColor: '#10b981', badgeBg: 'rgba(16,185,129,0.15)', link: '/feedbacks' },
   ];
 
-  const quickActions = [
-    { title: 'Link Machine', desc: 'Deploy machine at RO', icon: Cpu, color: '#f97316', link: '/machine?action=add' },
-  ];
-
   const offlineCount = inactiveMachinesCount;
   const waterLowCount = machinesList.filter(m => {
     const cleanW = String(m.live_water || m.liveWater || '').replace('%', '').trim().toLowerCase();
@@ -319,50 +315,6 @@ const IOCLDashboard = () => {
         ))}
       </div>
 
-      {/* Quick Actions */}
-      <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0 0 1.5rem 0' }}>IOCL Quick Actions</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-          {quickActions.map((action, idx) => (
-            <Link to={action.link} key={idx} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ 
-                background: 'var(--surface-bg)', 
-                borderRadius: '12px', 
-                padding: '1.25rem 1.5rem', 
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03)', 
-                border: '1px solid var(--border-color)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                minHeight: '90px',
-                transition: 'transform 0.2s, box-shadow 0.2s'
-              }} className="hover-lift">
-                <div style={{ 
-                  width: '52px', 
-                  height: '52px', 
-                  borderRadius: '12px', 
-                  background: action.color, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  color: '#ffffff',
-                  flexShrink: 0
-                }}>
-                  <action.icon size={26} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 0.25rem 0' }}>{action.title}</h3>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>{action.desc}</p>
-                </div>
-                <div style={{ color: 'var(--text-secondary)' }}>
-                  <ArrowRight size={20} />
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </div>
 
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
