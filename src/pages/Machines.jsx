@@ -699,6 +699,10 @@ const Machines = () => {
   }, [searchTerm]);
 
   const openModal = (type, item = null) => {
+    if (isRoUser && (type === 'add' || type === 'edit' || type === 'delete')) {
+      alert("RO Managers have Read-Only access to machines.");
+      return;
+    }
     setModalType(type);
     setSelectedItem(item);
     setShowViewWifiPassword(false);
@@ -839,6 +843,10 @@ const Machines = () => {
   };
 
   const handleSave = async () => {
+    if (isRoUser) {
+      alert("RO Managers have Read-Only access to machines.");
+      return;
+    }
     let activeRoId = formData.roId;
     if (!activeRoId) {
       if (isRoUser) {
@@ -1107,6 +1115,10 @@ const Machines = () => {
   };
 
   const handleDelete = async (machineToDelete = null) => {
+    if (isRoUser) {
+      alert("RO Managers have Read-Only access to machines.");
+      return;
+    }
     try {
       const item = machineToDelete || selectedItem;
       if (!item) return;
@@ -1382,14 +1394,16 @@ const Machines = () => {
             Machine List
           </div>
         </div>
-        <button onClick={() => openModal('add')} style={{ 
-          display: 'flex', alignItems: 'center', gap: '0.5rem', 
-          backgroundColor: '#8b5cf6', color: 'white', border: 'none', 
-          padding: '0.6rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: '500' 
-        }} className="hover-lift">
-          <Plus size={18} />
-          Register Machine
-        </button>
+        {!isRoUser && (
+          <button onClick={() => openModal('add')} style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', 
+            backgroundColor: '#8b5cf6', color: 'white', border: 'none', 
+            padding: '0.6rem 1.25rem', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: '500' 
+          }} className="hover-lift">
+            <Plus size={18} />
+            Register Machine
+          </button>
+        )}
       </div>
 
       {/* Search & Filter Bar */}
@@ -1538,12 +1552,16 @@ const Machines = () => {
                       <button onClick={() => openModal('view', machine)} title="View Details" style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.35rem', cursor: 'pointer', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
                         <Eye size={16} />
                       </button>
-                      <button onClick={() => openModal('edit', machine)} title="Edit" style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.35rem', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
-                        <Edit size={16} />
-                      </button>
-                      <button onClick={() => openModal('delete', machine)} title="Delete" style={{ background: '#ef4444', border: 'none', borderRadius: '4px', padding: '0.35rem', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
-                        <Trash2 size={16} />
-                      </button>
+                      {!isRoUser && (
+                        <>
+                          <button onClick={() => openModal('edit', machine)} title="Edit" style={{ background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', padding: '0.35rem', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+                            <Edit size={16} />
+                          </button>
+                          <button onClick={() => openModal('delete', machine)} title="Delete" style={{ background: '#ef4444', border: 'none', borderRadius: '4px', padding: '0.35rem', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
