@@ -151,17 +151,6 @@ const FeedbackLogs = () => {
       const phone = String(fb.user_phone || '').toLowerCase();
       const userName = String(fb.user_name || '').toLowerCase();
 
-      // Rating terms in numbers, text and sentiment
-      const rNum = Number(fb.rating || 0);
-      let ratingTerms = `${rNum} ${rNum}.0 ${rNum}star ${rNum}stars ${rNum} star ${rNum} stars`;
-      if (rNum >= 4) {
-        ratingTerms += ' excellent उत्कृष्ट good छान';
-      } else if (rNum === 3) {
-        ratingTerms += ' average साधारण';
-      } else if (rNum <= 2 && rNum > 0) {
-        ratingTerms += ' bad खराब complaint complaints poor';
-      }
-
       // Date & Time terms
       let dateTerms = '';
       if (fb.created_at) {
@@ -190,7 +179,6 @@ const FeedbackLogs = () => {
         roDisplay,
         roLoc,
         omcDisplay,
-        ratingTerms,
         reasons,
         comment,
         phone,
@@ -559,7 +547,7 @@ const FeedbackLogs = () => {
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
           <input
             type="text"
-            placeholder="Search by Machine, RO, OMC, Rating, Comment, Date..."
+            placeholder="Search by Machine, RO, OMC, Comment, Date..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -732,7 +720,7 @@ const FeedbackLogs = () => {
 
           {/* Print Table Head */}
           <thead className="print-only-head">
-            <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #94a3b8' }}>
+            <tr style={{ background: '#059669', color: '#ffffff', borderBottom: '2px solid #047857' }}>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>MACHINE ID</th>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>PETROL PUMP (RO)</th>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>OMC</th>
@@ -973,10 +961,10 @@ const FeedbackLogs = () => {
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ width: '130px' }}>
-            <img src={LOGO_LEFT_BASE64} alt="Client Logo" style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }} />
+          <div style={{ width: '160px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+            <img src={LOGO_LEFT_BASE64} alt="Client Logo" style={{ maxHeight: '68px', maxWidth: '155px', objectFit: 'contain' }} />
           </div>
-          <div style={{ textAlign: 'center', flex: 1, padding: '0 12px' }}>
+          <div style={{ textAlign: 'center', flex: 1, padding: '0 10px' }}>
             <h1 style={{ margin: '0 0 3px 0', color: '#059669', fontSize: '15px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
               SMARTBUDDY PETROLEUM IOT PLATFORM
             </h1>
@@ -984,31 +972,31 @@ const FeedbackLogs = () => {
               CUSTOMER HYGIENE RATINGS & FEEDBACK LOGS REPORT
             </h2>
             <div style={{ color: '#475569', fontSize: '9.5px', fontWeight: '600', display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <span>OMC: <strong style={{ color: '#0f172a' }}>{omcFilter !== 'ALL' ? omcFilter : (user?.role === 'OMC Admin' ? 'OMC Admin' : 'SuperAdmin')}</strong></span>
+              <span>OMC: <strong style={{ color: '#0f172a' }}>{omcFilter !== 'ALL' ? omcFilter : (user?.role === 'OMC Admin' ? 'OMC Admin' : (user?.role === 'User' || user?.role === 'RO Manager' ? 'RO Manager' : 'SuperAdmin'))}</strong></span>
               {roFilter !== 'ALL' && <span>RO: <strong style={{ color: '#0f172a' }}>{roFilter}</strong></span>}
               <span>Total: <strong style={{ color: '#0f172a' }}>{filteredFeedbacks.length}</strong></span>
               <span>Date: <strong style={{ color: '#0f172a' }}>{new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</strong></span>
             </div>
           </div>
-          <div style={{ width: '130px', display: 'flex', justifyContent: 'flex-end' }}>
-            <img src={LOGO_RIGHT_BASE64} alt="Company Logo" style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }} />
+          <div style={{ width: '160px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+            <img src={LOGO_RIGHT_BASE64} alt="Company Logo" style={{ maxHeight: '68px', maxWidth: '155px', objectFit: 'contain' }} />
           </div>
         </div>
 
         {/* Separator Line */}
-        <div style={{ borderBottom: '2px solid #1d4ed8', marginBottom: '14px' }} />
+        <div style={{ borderBottom: '2px solid #059669', marginBottom: '14px' }} />
 
         {/* Table with Exact Hindi/Marathi Unicode Support */}
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '9.5px' }}>
           <thead>
-            <tr style={{ background: '#0f172a', color: '#ffffff' }}>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', width: '90px' }}>MACHINE ID</th>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', width: '55px' }}>OMC</th>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', width: '125px' }}>PETROL PUMP (RO)</th>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', textAlign: 'center', width: '60px' }}>RATING</th>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', width: '145px' }}>CUSTOMER REASONS</th>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', width: '185px' }}>CUSTOMER COMMENTS</th>
-              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #334155', textAlign: 'right', width: '100px' }}>DATE & TIME</th>
+            <tr style={{ background: '#059669', color: '#ffffff' }}>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', width: '90px' }}>MACHINE ID</th>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', width: '135px' }}>PETROL PUMP (RO)</th>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', width: '65px' }}>OMC</th>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', textAlign: 'center', width: '60px' }}>RATING</th>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', width: '145px' }}>CUSTOMER REASONS</th>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', width: '185px' }}>CUSTOMER COMMENTS</th>
+              <th style={{ padding: '7px 8px', fontWeight: '700', border: '1px solid #047857', textAlign: 'right', width: '100px' }}>DATE & TIME</th>
             </tr>
           </thead>
           <tbody>
@@ -1024,12 +1012,12 @@ const FeedbackLogs = () => {
                   <td style={{ padding: '6px 8px', fontWeight: 'bold', border: '1px solid #cbd5e1', color: '#6d28d9' }}>
                     {fb.display_machine_name || fb.machine_name || ('SBP2T' + fb.machine_id)}
                   </td>
-                  <td style={{ padding: '6px 8px', border: '1px solid #cbd5e1', fontWeight: '600' }}>
-                    {fb.omc_name || 'OMC'}
-                  </td>
                   <td style={{ padding: '6px 8px', border: '1px solid #cbd5e1' }}>
                     <div style={{ fontWeight: '600', color: '#0f172a' }}>{fb.ro_name || 'Retail Outlet'}</div>
                     {fb.ro_location && <div style={{ fontSize: '8.5px', color: '#64748b' }}>{fb.ro_location}</div>}
+                  </td>
+                  <td style={{ padding: '6px 8px', border: '1px solid #cbd5e1', fontWeight: '600' }}>
+                    {fb.omc_name || 'OMC'}
                   </td>
                   <td style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
                     <span style={{

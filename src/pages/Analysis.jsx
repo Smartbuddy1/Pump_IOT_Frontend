@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   Download, Filter,
-  Thermometer, CloudRain, Wind, Droplets, Users, Maximize2, X
+  Thermometer, CloudRain, Wind, Droplets, Users, Maximize2, X, Calendar
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
@@ -223,8 +223,8 @@ const Analysis = () => {
 
     // 5. Visits / Footfall
     const baseVisits = target
-      ? (Number(target.visits) || 30)
-      : relevantMachines.reduce((sum, m) => sum + (Number(m.visits) || 30), 0);
+      ? (Number(target.visits) || Number(target.usage) || 0)
+      : relevantMachines.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0);
 
     targetDates.forEach(({ dateLabel, idx }) => {
       const isToday = idx === (targetDates.length - 1);
@@ -247,7 +247,7 @@ const Analysis = () => {
         avg_humidity: Math.max(30, Math.min(85, baseHum + humVariance)),
         avg_odour: Math.max(10, Math.min(90, baseOdour + odourVariance)),
         total_water_alerts: isToday ? lowWaterCount : (lowWaterCount > 0 && dayOffset % 2 === 0 ? 1 : 0),
-        total_visits: Math.max(15, baseVisits + visitsVariance)
+        total_visits: baseVisits > 0 ? Math.max(0, baseVisits + visitsVariance) : 0
       });
     });
     return result;
@@ -449,69 +449,126 @@ const Analysis = () => {
       return sum + (isNaN(num) || num <= 0 ? 30 : num);
     }, 0) / count) || 30;
     const waterAlerts = relevant.filter(m => String(m.live_water || '').toLowerCase() === 'low').length;
-    const visits = relevant.reduce((sum, m) => sum + (Number(m.visits) || 35), 0);
+    const visits = relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0);
 
     return { temp, hum, odour, waterAlerts, visits };
   }, [filteredMachinesForDropdown, selectedMachine, machines]);
 
+  const getTimeframeSubtitle = (timeframe, metricLabel) => {
+    if (timeframe === 'Hourly') return `Last 1 Hour ${metricLabel}`;
+    if (timeframe === 'Today') return `Today's Hourly ${metricLabel}`;
+    return `${timeframe} ${metricLabel}`;
+  };
+
   const getTimeframeData = (metricType, timeframe, rawHistory, baseVal) => {
-    // 1. Hourly View (12 intervals throughout the 24h cycle)
+    // 1. Hourly View (Last 1 Hour in 10-minute intervals up to current minute)
     if (timeframe === 'Hourly') {
-      const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
-      return hours.map((hour, idx) => {
+      const now = new Date();
+      const points = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 10 * 60 * 1000);
+        const timeLabel = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+        points.push({ timeLabel, idx: 6 - i });
+      }
+
+      return points.map(({ timeLabel, idx }) => {
+        const isCurrent = idx === 6;
         let val = baseVal;
         if (metricType === 'temp') {
-          const curve = [-3, -4, -4, -2, 0, 3, 4, 3, 2, 0, -1, -2];
-          val = Math.max(16, Math.min(48, Math.round(baseVal + (curve[idx] ?? 0))));
+          const drift = isCurrent ? 0 : ([-0.6, -0.4, -0.5, -0.2, 0.2, 0.1, 0][idx] ?? 0);
+          val = Math.max(16, Math.min(48, Math.round(baseVal + drift)));
         } else if (metricType === 'humidity') {
-          const curve = [6, 8, 8, 5, 0, -6, -8, -6, -3, 2, 4, 5];
-          val = Math.max(25, Math.min(95, Math.round(baseVal + (curve[idx] ?? 0))));
+          const drift = isCurrent ? 0 : ([1, 2, 1, -1, 0, 1, 0][idx] ?? 0);
+          val = Math.max(25, Math.min(95, Math.round(baseVal + drift)));
         } else if (metricType === 'odour') {
-          const curve = [-5, -6, -6, -3, 3, 5, 4, 2, 4, 6, 2, -2];
-          val = Math.max(10, Math.min(95, Math.round(baseVal + (curve[idx] ?? 0))));
+          const drift = isCurrent ? 0 : ([-2, -1, 1, 0, -1, 1, 0][idx] ?? 0);
+          val = Math.max(10, Math.min(95, Math.round(baseVal + drift)));
         } else if (metricType === 'water') {
-          val = baseVal > 0 ? (idx % 4 === 2 ? 1 : 0) : 0;
+          val = baseVal > 0 ? (idx === 6 ? 1 : 0) : 0;
         } else if (metricType === 'usage') {
-          const curve = [1, 0, 0, 2, 5, 8, 7, 5, 8, 9, 4, 2];
-          const scale = Math.max(Math.round(baseVal / 10), 3);
-          val = Math.max(0, curve[idx] * scale);
+          if (!baseVal || baseVal <= 0) {
+            val = 0;
+          } else {
+            const lastHourVisits = Math.max(1, Math.round(baseVal / 8));
+            val = idx === 6 ? Math.round(lastHourVisits * 0.4) : (idx % 2 === 0 ? Math.round(lastHourVisits * 0.3) : 0);
+          }
         }
         if (metricType === 'odour') {
-          const nh3Val = Math.max(5, Math.min(60, Math.round(val * 0.58 + ((idx % 3) - 1) * 2)));
-          const h2sVal = Math.max(3, Math.min(50, Math.round(val * 0.42 - ((idx % 3) - 1) * 2)));
-          return { date: hour, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
+          const nh3Val = Math.max(5, Math.min(60, Math.round(val * 0.58 + ((idx % 3) - 1))));
+          const h2sVal = Math.max(3, Math.min(50, Math.round(val * 0.42 - ((idx % 3) - 1))));
+          return { date: timeLabel, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
         }
-        return { date: hour, value: val };
+        return { date: timeLabel, value: val };
       });
     }
 
-    // 2. Today View (Key daytime monitoring blocks)
+    // 2. Today View (Hours of Today strictly up to current hour - no future hours!)
     if (timeframe === 'Today') {
-      const slots = ['06:00 AM', '09:00 AM', '12:00 PM', '03:00 PM', '06:00 PM', '09:00 PM', '11:00 PM'];
-      return slots.map((slot, idx) => {
+      const now = new Date();
+      const currentHour = now.getHours(); // e.g. 13 at 1:17 PM
+
+      // Generate slots from 00:00 up to currentHour only (never include future hours)
+      const hoursList = [];
+      const step = currentHour <= 6 ? 1 : 2;
+      for (let h = 0; h <= currentHour; h += step) {
+        hoursList.push(h);
+      }
+      if (!hoursList.includes(currentHour)) {
+        hoursList.push(currentHour);
+      }
+
+      // Precalculate offset curves relative to current hour so the latest point is exactly baseVal
+      const getTempOffset = (h) => {
+        const t = [-3, -3, -4, -4, -4, -3, -2, -1, 0, 1, 2, 3, 3, 3, 4, 3, 2, 1, 0, -1, -1, -2, -2, -3];
+        return t[h] ?? 0;
+      };
+      const getHumOffset = (h) => {
+        const t = [7, 7, 8, 8, 8, 6, 4, 2, 0, -2, -4, -6, -7, -7, -8, -6, -4, -2, 0, 2, 3, 5, 6, 7];
+        return t[h] ?? 0;
+      };
+      const getOdourOffset = (h) => {
+        const t = [-5, -5, -6, -6, -6, -4, -2, 1, 3, 4, 4, 3, 3, 2, 2, 3, 4, 5, 5, 4, 2, 0, -2, -4];
+        return t[h] ?? 0;
+      };
+
+      const currTempOff = getTempOffset(currentHour);
+      const currHumOff = getHumOffset(currentHour);
+      const currOdourOff = getOdourOffset(currentHour);
+
+      // Weights for distributing usage up to current hour
+      const usageWeights = hoursList.map(h => (h >= 8 && h <= 20 ? 3 : 1));
+      const totalWeight = usageWeights.reduce((a, b) => a + b, 0) || 1;
+
+      return hoursList.map((hour, idx) => {
+        const isCurrent = hour === currentHour;
+        const hourLabel = `${String(hour).padStart(2, '0')}:00`;
         let val = baseVal;
+
         if (metricType === 'temp') {
-          const curve = [-2, 0, 3, 4, 2, 0, -1];
-          val = Math.max(16, Math.min(48, Math.round(baseVal + (curve[idx] ?? 0))));
+          const diff = isCurrent ? 0 : (getTempOffset(hour) - currTempOff);
+          val = Math.max(16, Math.min(48, Math.round(baseVal + diff)));
         } else if (metricType === 'humidity') {
-          const curve = [5, 2, -4, -6, -2, 2, 4];
-          val = Math.max(25, Math.min(95, Math.round(baseVal + (curve[idx] ?? 0))));
+          const diff = isCurrent ? 0 : (getHumOffset(hour) - currHumOff);
+          val = Math.max(25, Math.min(95, Math.round(baseVal + diff)));
         } else if (metricType === 'odour') {
-          const curve = [-2, 4, 5, 2, 5, 2, -1];
-          val = Math.max(10, Math.min(95, Math.round(baseVal + (curve[idx] ?? 0))));
+          const diff = isCurrent ? 0 : (getOdourOffset(hour) - currOdourOff);
+          val = Math.max(10, Math.min(95, Math.round(baseVal + diff)));
         } else if (metricType === 'water') {
-          val = baseVal > 0 ? (idx === 3 ? 1 : 0) : 0;
+          val = baseVal > 0 ? (isCurrent ? 1 : (idx % 3 === 0 ? 1 : 0)) : 0;
         } else if (metricType === 'usage') {
-          const curve = [3, 9, 8, 6, 10, 6, 2];
-          const scale = Math.max(Math.round(baseVal / 8), 2);
-          val = Math.max(0, curve[idx] * scale);
+          if (!baseVal || baseVal <= 0) {
+            val = 0;
+          } else {
+            val = Math.round((usageWeights[idx] / totalWeight) * baseVal);
+          }
         }
+
         if (metricType === 'odour') {
-          const nh3Val = Math.max(5, Math.min(60, Math.round(val * 0.58 + ((idx % 3) - 1) * 2)));
-          const h2sVal = Math.max(3, Math.min(50, Math.round(val * 0.42 - ((idx % 3) - 1) * 2)));
-          return { date: slot, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
+          const nh3Val = Math.max(5, Math.min(60, Math.round(val * 0.58 + ((idx % 3) - 1))));
+          const h2sVal = Math.max(3, Math.min(50, Math.round(val * 0.42 - ((idx % 3) - 1))));
+          return { date: hourLabel, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
         }
-        return { date: slot, value: val };
+        return { date: hourLabel, value: val };
       });
     }
 
@@ -530,7 +587,7 @@ const Analysis = () => {
         if (metricType === 'water') {
           val = baseVal > 0 && idx % 3 === 0 ? 1 : 0;
         } else if (metricType === 'usage') {
-          val = Math.max(15, baseVal + offset * 4);
+          val = (!baseVal || baseVal <= 0) ? 0 : Math.max(0, baseVal + offset * 4);
         } else {
           val = Math.max(5, baseVal + offset);
         }
@@ -553,7 +610,7 @@ const Analysis = () => {
           if (metricType === 'water') {
             val = baseVal > 0 ? (idx % 3 === 1 ? 1 : 0) : 0;
           } else if (metricType === 'usage') {
-            val = Math.max(30, (baseVal * 6) + (offset * 15));
+            val = (!baseVal || baseVal <= 0) ? 0 : Math.max(0, (baseVal * 6) + (offset * 15));
           } else {
             val = Math.max(5, baseVal + offset);
           }
@@ -572,7 +629,7 @@ const Analysis = () => {
         if (metricType === 'water') {
           val = baseVal > 0 ? (idx % 2 === 1 ? 1 : 0) : 0;
         } else if (metricType === 'usage') {
-          val = Math.max(20, (baseVal * 5) + (offset * 12));
+          val = (!baseVal || baseVal <= 0) ? 0 : Math.max(0, (baseVal * 5) + (offset * 12));
         } else {
           val = Math.max(5, baseVal + offset);
         }
@@ -625,7 +682,7 @@ const Analysis = () => {
       case 'temp':
         return {
           title: 'Temperature Analysis',
-          subtitle: `${chartTimeframes.temp} Temperature in °C`,
+          subtitle: getTimeframeSubtitle(chartTimeframes.temp, 'Temperature in °C'),
           icon: <Thermometer size={24} color={GREEN_COLOR} />,
           badge: null,
           data: displayedTempData,
@@ -636,7 +693,7 @@ const Analysis = () => {
       case 'humidity':
         return {
           title: 'Humidity Analysis',
-          subtitle: `${chartTimeframes.humidity} Relative Humidity in %`,
+          subtitle: getTimeframeSubtitle(chartTimeframes.humidity, 'Relative Humidity in %'),
           icon: <CloudRain size={24} color={GREEN_COLOR} />,
           badge: null,
           data: displayedHumidityData,
@@ -647,7 +704,7 @@ const Analysis = () => {
       case 'odour':
         return {
           title: 'Odour, NH3 & H2S Analysis',
-          subtitle: `${chartTimeframes.odour} Air Quality Breakdown (NH3, H2S, Odour in PPM)`,
+          subtitle: getTimeframeSubtitle(chartTimeframes.odour, 'Air Quality Breakdown (NH3, H2S, Odour in PPM)'),
           icon: <Wind size={24} color={GREEN_COLOR} />,
           badge: null,
           data: displayedOdourData,
@@ -659,7 +716,7 @@ const Analysis = () => {
       case 'water':
         return {
           title: 'Water Low Alerts',
-          subtitle: `${chartTimeframes.water} Low Water Incidents`,
+          subtitle: getTimeframeSubtitle(chartTimeframes.water, 'Low Water Incidents'),
           icon: <Droplets size={24} color={GREEN_COLOR} />,
           badge: `Total: ${displayedWaterTotal} Alerts`,
           data: displayedWaterData,
@@ -671,7 +728,7 @@ const Analysis = () => {
       case 'usage':
         return {
           title: 'Machine Usage Analysis',
-          subtitle: `${chartTimeframes.usage} Footfall / Visit Count`,
+          subtitle: getTimeframeSubtitle(chartTimeframes.usage, 'Footfall / Visit Count'),
           icon: <Users size={24} color={GREEN_COLOR} />,
           badge: `Total: ${displayedUsageTotal} Visits`,
           data: displayedUsageData,
@@ -964,21 +1021,68 @@ const Analysis = () => {
             <>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>From Date</label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', color: 'var(--text-primary)', colorScheme: 'dark light' }}
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Calendar size={16} color="var(--text-secondary)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 1 }} />
+                  <input
+                    type="date"
+                    value={fromDate}
+                    max={toDate && toDate <= getTodayFormatted() ? toDate : getTodayFormatted()}
+                    onClick={(e) => { try { e.target.showPicker && e.target.showPicker(); } catch (_) {} }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const todayStr = getTodayFormatted();
+                      if (val > todayStr) return;
+                      setFromDate(val);
+                      if (toDate && val > toDate) setToDate(val);
+                    }}
+                    style={{ 
+                      width: '100%', 
+                      height: '42px',
+                      boxSizing: 'border-box',
+                      padding: '0.65rem 1rem 0.65rem 2.4rem', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--border-color)', 
+                      background: 'var(--surface-bg)', 
+                      color: 'var(--text-primary)', 
+                      colorScheme: 'dark light',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  />
+                </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>To Date</label>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', color: 'var(--text-primary)', colorScheme: 'dark light' }}
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Calendar size={16} color="var(--text-secondary)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 1 }} />
+                  <input
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    max={getTodayFormatted()}
+                    onClick={(e) => { try { e.target.showPicker && e.target.showPicker(); } catch (_) {} }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const todayStr = getTodayFormatted();
+                      if (val > todayStr) return;
+                      setToDate(val);
+                      if (fromDate && val < fromDate) setFromDate(val);
+                    }}
+                    style={{ 
+                      width: '100%', 
+                      height: '42px',
+                      boxSizing: 'border-box',
+                      padding: '0.65rem 1rem 0.65rem 2.4rem', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--border-color)', 
+                      background: 'var(--surface-bg)', 
+                      color: 'var(--text-primary)', 
+                      colorScheme: 'dark light',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -1111,7 +1215,7 @@ const Analysis = () => {
                         </select>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.2rem' }}>
-                        {chartTimeframes.temp} Temperature in °C
+                        {getTimeframeSubtitle(chartTimeframes.temp, 'Temperature in °C')}
                       </span>
                     </div>
                   </div>
@@ -1198,7 +1302,7 @@ const Analysis = () => {
                         </select>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.2rem' }}>
-                        {chartTimeframes.humidity} Relative Humidity in %
+                        {getTimeframeSubtitle(chartTimeframes.humidity, 'Relative Humidity in %')}
                       </span>
                     </div>
                   </div>
@@ -1285,7 +1389,7 @@ const Analysis = () => {
                         </select>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.2rem' }}>
-                        {chartTimeframes.odour} Air Quality / Odour in PPM
+                        {getTimeframeSubtitle(chartTimeframes.odour, 'Air Quality / Odour in PPM')}
                       </span>
                     </div>
                   </div>
@@ -1390,7 +1494,7 @@ const Analysis = () => {
                         </select>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.2rem' }}>
-                        {chartTimeframes.water} Low Water Incidents
+                        {getTimeframeSubtitle(chartTimeframes.water, 'Low Water Incidents')}
                       </span>
                     </div>
                   </div>
@@ -1480,7 +1584,7 @@ const Analysis = () => {
                         </select>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginTop: '0.2rem' }}>
-                        {chartTimeframes.usage} Footfall / Visit Count
+                        {getTimeframeSubtitle(chartTimeframes.usage, 'Footfall / Visit Count')}
                       </span>
                     </div>
                   </div>

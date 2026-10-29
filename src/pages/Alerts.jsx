@@ -151,30 +151,37 @@ const Alerts = () => {
     const searchString = searchTerm.trim().toLowerCase();
     let matchesSearch = true;
     if (searchString) {
-      const cleanNum = searchString.replace(/^[#id\s:\-_]+/i, '').trim();
+      const cleanNum = searchString.replace(/^(?:#|id[:\s_-]*)/i, '').trim();
       const alertId = String(alert.id || '');
       const mId = String(alert.machineId || '').toLowerCase();
       const mName = String(alert.machineName || '').toLowerCase();
       const ro = String(alert.ro || alert.roName || '').toLowerCase();
+      const omc = String(alert.omcName || alert.omc || '').toLowerCase();
       const type = String(alert.type || '').toLowerCase();
       const issue = String(alert.issue || '').toLowerCase();
       const severity = String(alert.severity || '').toLowerCase();
       const status = String(alert.status || '').toLowerCase();
       const date = String(alert.date || alert.time || '').toLowerCase();
 
-      if (cleanNum && (cleanNum === alertId || cleanNum === mId || cleanNum === mName || mName.endsWith(cleanNum))) {
+      const isBoilerplate = /^(s|p|sb|bp|2t|2p)$/i.test(searchString);
+
+      if (omc && (omc === searchString || omc.includes(searchString) || (searchString.length >= 2 && omc.startsWith(searchString)))) {
         matchesSearch = true;
-      } else if (matchesMachineQuery(mId, searchString) || matchesMachineQuery(mName, searchString) || (cleanNum && (matchesMachineQuery(mId, cleanNum) || matchesMachineQuery(mName, cleanNum)))) {
+      } else if (cleanNum && /^\d+$/.test(cleanNum) && (cleanNum === alertId || cleanNum === mId || cleanNum === mName || mName.endsWith(cleanNum))) {
         matchesSearch = true;
-      } else if (mId.includes(searchString) || mName.includes(searchString) || ro.includes(searchString) || type.includes(searchString) || issue.includes(searchString) || severity.includes(searchString) || status.includes(searchString) || date.includes(searchString)) {
+      } else if (matchesMachineQuery(mId, searchString) || matchesMachineQuery(mName, searchString)) {
+        matchesSearch = true;
+      } else if (mId === searchString || mName === searchString || (!isBoilerplate && (mId.includes(searchString) || mName.includes(searchString))) || ro.includes(searchString) || type.includes(searchString) || issue.includes(searchString) || severity.includes(searchString) || status.includes(searchString) || date.includes(searchString)) {
         matchesSearch = true;
       } else {
         const searchWords = searchString.split(/\s+/).filter(Boolean);
         matchesSearch = searchWords.every(word => {
-          const cw = word.replace(/^[#id\s:\-_]+/i, '').trim();
-          if (cw && (cw === alertId || cw === mId || cw === mName || mName.endsWith(cw))) return true;
+          const cw = word.replace(/^(?:#|id[:\s_-]*)/i, '').trim();
+          const isBp = /^(s|p|sb|bp|2t|2p)$/i.test(word);
+          if (omc && (omc.includes(word) || (word.length >= 2 && omc.startsWith(word)))) return true;
+          if (cw && /^\d+$/.test(cw) && (cw === alertId || cw === mId || cw === mName || mName.endsWith(cw))) return true;
           if (matchesMachineQuery(mId, word) || matchesMachineQuery(mName, word) || (cw && (matchesMachineQuery(mId, cw) || matchesMachineQuery(mName, cw)))) return true;
-          return mId.includes(word) || mName.includes(word) || ro.includes(word) || type.includes(word) || issue.includes(word) || severity.includes(word) || status.includes(word);
+          return (mId === word || mName === word || (!isBp && (mId.includes(word) || mName.includes(word)))) || ro.includes(word) || type.includes(word) || issue.includes(word) || severity.includes(word) || status.includes(word);
         });
       }
     }

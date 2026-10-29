@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
 const getSocketUrl = () => {
+  if (typeof window !== 'undefined' && import.meta.env.DEV) {
+    return window.location.origin;
+  }
   const envUrl = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_API_BASE_URL;
   if (!envUrl || envUrl.startsWith('/')) {
     return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000';

@@ -73,7 +73,7 @@ const IOCLDashboard = () => {
             ro_id: m.ro_id || m.roId,
             roId: m.ro_id || m.roId,
             type: m.type || 'Dispenser',
-            status: (savedROs.find(r => String(r.id) === String(m.ro_id || m.roId))?.status?.toLowerCase() === 'inactive') ? 'Inactive' : (m.status || 'ACTIVE'),
+            status: (savedROs.find(r => String(r.id) === String(m.ro_id || m.roId))?.status?.toLowerCase() === 'inactive') ? 'Inactive' : (m.status || 'Inactive'),
             isWaterLow,
             liveTemp: m.live_temp ?? m.liveTemp ?? '--',
             liveWater: isWaterLow ? 'Low' : 'Normal',
@@ -97,7 +97,7 @@ const IOCLDashboard = () => {
           const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
           if (isRoInactive) return false;
           const s = String(m.status || '').trim().toUpperCase();
-          return s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
+          return s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
         }).length;
         setActiveMachinesCount(activeCount);
         setInactiveMachinesCount(myMachines.length - activeCount);
@@ -130,13 +130,42 @@ const IOCLDashboard = () => {
     window.addEventListener('focus', handleDataChanged);
     window.addEventListener('pageshow', handleDataChanged);
 
+    // High-performance real-time telemetry state update without server re-fetching
+    const handleLiveTelemetry = (data) => {
+      if (!data || !data.machineId) return;
+      setMachinesList(prev => (Array.isArray(prev) ? prev : []).map(m => {
+        if (m.name?.toLowerCase() === String(data.machineId).toLowerCase()) {
+          return {
+            ...m,
+            live_temp: data.temperature || m.live_temp,
+            live_water: data.water || m.live_water,
+            live_humidity: data.humidity || m.live_humidity,
+            live_odour: data.odour || m.live_odour,
+            live_nh3: data.nh3 || m.live_nh3,
+            live_h2s: data.h2s || m.live_h2s,
+            status: 'Running'
+          };
+        }
+        return m;
+      }));
+    };
+
+    let debounceTimer = null;
+    const debouncedFetchData = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchData();
+      }, 2000);
+    };
+
     if (socket) {
-      socket.on('live_data_update', fetchData);
-      socket.on('new_alert', fetchData);
-      socket.on('new_feedback', fetchData);
+      socket.on('live_data_update', handleLiveTelemetry);
+      socket.on('new_alert', debouncedFetchData);
+      socket.on('new_feedback', debouncedFetchData);
     }
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('app_data_updated', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
       window.removeEventListener('focus', handleDataChanged);
@@ -228,15 +257,13 @@ const IOCLDashboard = () => {
     },
   ];
 
-  const dashboardTitle = user?.roName || user?.name || 'Retail Outlet';
-
   return (
     <div style={{ padding: '0.5rem 2rem 2rem 2rem', animation: 'fadeIn 0.5s ease-in', maxWidth: '1400px', margin: '0 auto', color: 'var(--text-primary)' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '2rem', fontWeight: 'bold', margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            {dashboardTitle} <span style={{ color: '#3b82f6' }}>Dashboard</span>
+            RO <span style={{ color: '#3b82f6' }}>Dashboard</span>
           </h1>
         </div>
       </div>

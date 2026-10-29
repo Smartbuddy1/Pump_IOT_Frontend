@@ -208,15 +208,15 @@ const IODashboard = ({ machineId, status, machineDetails }) => {
         
         // Client Logo
         if (clientImgObj && clientImgObj.base64) {
-          const maxWidth = 35;
-          const maxHeight = 20;
+          const maxWidth = 42;
+          const maxHeight = 22;
           let calcWidth = maxWidth;
           let calcHeight = (clientImgObj.height * maxWidth) / clientImgObj.width;
           if (calcHeight > maxHeight) {
             calcHeight = maxHeight;
             calcWidth = (clientImgObj.width * maxHeight) / clientImgObj.height;
           }
-          const yOffset = 8 + (maxHeight - calcHeight) / 2;
+          const yOffset = 7 + (maxHeight - calcHeight) / 2;
           doc.addImage(clientImgObj.base64, clientImgObj.ext, 14, yOffset, calcWidth, calcHeight);
         } else {
           doc.setDrawColor(37, 99, 235);
@@ -228,15 +228,15 @@ const IODashboard = ({ machineId, status, machineDetails }) => {
 
         // SB Logo
         if (sbImgObj && sbImgObj.base64) {
-          const sbMaxWidth = 35;
-          const sbMaxHeight = 20;
+          const sbMaxWidth = 42;
+          const sbMaxHeight = 22;
           let sbCalcWidth = sbMaxWidth;
           let sbCalcHeight = (sbImgObj.height * sbMaxWidth) / sbImgObj.width;
           if (sbCalcHeight > sbMaxHeight) {
             sbCalcHeight = sbMaxHeight;
             sbCalcWidth = (sbImgObj.width * sbMaxHeight) / sbImgObj.height;
           }
-          const sbYOffset = 8 + (sbMaxHeight - sbCalcHeight) / 2;
+          const sbYOffset = 7 + (sbMaxHeight - sbCalcHeight) / 2;
           const sbXOffset = pageWidth - 14 - sbCalcWidth;
           doc.addImage(sbImgObj.base64, sbImgObj.ext, sbXOffset, sbYOffset, sbCalcWidth, sbCalcHeight);
         }

@@ -306,60 +306,84 @@ const Reports = () => {
       return true;
     });
 
+    const todayYMD = getTodayFormatted();
+    let targetDates = [];
+
+    if (filterType === 'Date Range' && fromDate && toDate) {
+      const minDateStr = fromDate <= toDate ? fromDate : toDate;
+      const maxDateStr = (fromDate <= toDate ? toDate : fromDate) <= todayYMD ? (fromDate <= toDate ? toDate : fromDate) : todayYMD;
+      const [startY, startM, startD] = minDateStr.split('-').map(Number);
+      const [endY, endM, endD] = maxDateStr.split('-').map(Number);
+      const cur = new Date(startY, (startM || 1) - 1, startD || 1);
+      const end = new Date(endY, (endM || 1) - 1, endD || 1);
+      while (cur <= end) {
+        targetDates.push(formatDateToYMD(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else if (filterType === 'Financial Year') {
+      let fyStart = '2026-04-01';
+      let fyEnd = todayYMD;
+      if (financialYear === 'Previous FY (2025-26)') {
+        fyStart = '2025-04-01';
+        fyEnd = '2026-03-31';
+      } else if (financialYear === 'All Time') {
+        fyStart = '2020-01-01';
+        fyEnd = todayYMD;
+      }
+      const [startY, startM, startD] = fyStart.split('-').map(Number);
+      const [endY, endM, endD] = fyEnd.split('-').map(Number);
+      const cur = new Date(startY, (startM || 1) - 1, startD || 1);
+      const end = new Date(endY, (endM || 1) - 1, endD || 1);
+      while (cur <= end) {
+        targetDates.push(formatDateToYMD(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      for (let i = 0; i <= 29; i++) {
+        targetDates.push(getPastDateFormatted(i));
+      }
+    }
+
+    // Sort newest dates first (descending)
+    targetDates.sort((a, b) => b.localeCompare(a));
+
     if (activeTab === 'Usage Analytics') {
-      const rows = targetMachines.map(m => {
+      const rows = [];
+      targetMachines.forEach(m => {
         const ro = roList.find(r => String(r.id) === String(m.ro_id || m.roId) || String(r.db_id) === String(m.ro_id || m.roId));
         const roName = ro?.name || m.roName || 'RO Location';
         const omcName = getOmcName(m.ro_id || m.roId, m);
         const visits = getMachineVisits(m) || 0;
-        const now = new Date();
-        const dateStr = formatDateToYMD(now);
-        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase();
+        const mInstallDate = getMachineInstallDate(m) || todayYMD;
 
-        return {
-          machineId: m.name || m.id,
-          date: dateStr,
-          time: timeStr,
-          roName: roName,
-          ro_id: m.ro_id || m.roId,
-          omcName: omcName,
-          val1: visits,
-          val2: 'Normal'
-        };
+        targetDates.forEach(dateStr => {
+          if (dateStr >= mInstallDate && dateStr <= todayYMD) {
+            rows.push({
+              machineId: m.name || m.id,
+              date: dateStr,
+              roName: roName,
+              ro_id: m.ro_id || m.roId,
+              omcName: omcName,
+              val1: (dateStr === todayYMD ? visits : 0),
+              val2: 'Normal'
+            });
+          }
+        });
       });
+
+      // Sort descending: newest date first, then by machine name
+      rows.sort((a, b) => {
+        const dDiff = String(b.date).localeCompare(String(a.date));
+        if (dDiff !== 0) return dDiff;
+        return String(a.machineId).localeCompare(String(b.machineId));
+      });
+
       setReportData(rows);
     } else {
-      // Hygiene & Alerts Report -> ALERTS HISTORY across selected date range or FY
-      let targetDates = [];
-      if (filterType === 'Date Range' && fromDate && toDate) {
-        const minDateStr = fromDate <= toDate ? fromDate : toDate;
-        const maxDateStr = fromDate <= toDate ? toDate : fromDate;
-        const [startY, startM, startD] = minDateStr.split('-').map(Number);
-        const [endY, endM, endD] = maxDateStr.split('-').map(Number);
-        const cur = new Date(startY, (startM || 1) - 1, startD || 1);
-        const end = new Date(endY, (endM || 1) - 1, endD || 1);
-        while (cur <= end) {
-          targetDates.push(formatDateToYMD(cur));
-          cur.setDate(cur.getDate() + 1);
-        }
-      } else if (filterType === 'Financial Year') {
-        for (let i = 0; i <= 29; i++) {
-          targetDates.push(getPastDateFormatted(i));
-        }
-      } else {
-        for (let i = 0; i <= 14; i++) {
-          targetDates.push(getPastDateFormatted(i));
-        }
-      }
-      // Sort newest dates first
-      // Sort newest dates first
-      targetDates.sort((a, b) => b.localeCompare(a));
-
+      // Hygiene & Alerts Report
       const historyRows = [];
       const seenKey = new Set();
-      const todayYMD = formatDateToYMD(new Date());
 
-      // Include real system alerts matching target machines
       (alertList || []).forEach(a => {
         const aMachId = String(a.machineId || a.machineName || a.machine_id || '').toLowerCase();
         const matchingMachine = targetMachines.find(m => 
@@ -382,20 +406,9 @@ const Reports = () => {
             if (!seenKey.has(key)) {
               seenKey.add(key);
 
-              let alertTime = a.rawTime || a.time || '10:30 AM';
-              if (aDate === todayYMD) {
-                const now = new Date();
-                const nowTotalMins = now.getHours() * 60 + now.getMinutes();
-                const alertMins = parseTimeToMinutes(alertTime);
-                if (alertMins > nowTotalMins) {
-                  alertTime = formatMinsTo12H(Math.max(10, nowTotalMins - 15));
-                }
-              }
-
               historyRows.push({
                 machineId: matchingMachine.name || matchingMachine.id,
                 date: aDate || getTodayFormatted(),
-                time: alertTime,
                 roName: ro?.name || matchingMachine.roName || a.roName || 'RO Location',
                 ro_id: matchingMachine.ro_id || matchingMachine.roId,
                 omcName: getOmcName(matchingMachine.ro_id || matchingMachine.roId, matchingMachine),
@@ -408,13 +421,7 @@ const Reports = () => {
         }
       });
 
-      // Sort history descending: newest date first, then newest time (accurate 24-hr minute order)
-      historyRows.sort((a, b) => {
-        const dDiff = String(b.date).localeCompare(String(a.date));
-        if (dDiff !== 0) return dDiff;
-        return parseTimeToMinutes(b.time) - parseTimeToMinutes(a.time);
-      });
-
+      historyRows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       setReportData(historyRows);
     }
   };
@@ -584,23 +591,23 @@ const Reports = () => {
 
     const headers = activeTab === 'Usage Analytics'
       ? (isSuperAdmin 
-          ? ['Machine ID', 'Date', 'Time', 'OMC', 'RO', 'Total Usage (Visits)'] 
-          : ['Machine ID', 'Date', 'Time', 'RO', 'Total Usage (Visits)'])
+          ? ['Machine ID', 'Date', 'OMC', 'RO', 'Machine Usage (Visits)'] 
+          : ['Machine ID', 'Date', 'RO', 'Machine Usage (Visits)'])
       : (isSuperAdmin 
-          ? ['Machine ID', 'Date', 'Time', 'OMC', 'RO', 'Alert Type', 'Sensor Alert Details'] 
-          : ['Machine ID', 'Date', 'Time', 'RO', 'Alert Type', 'Sensor Alert Details']);
+          ? ['Machine ID', 'Date', 'OMC', 'RO', 'Severity', 'Sensor Alert'] 
+          : ['Machine ID', 'Date', 'RO', 'Severity', 'Sensor Alert']);
 
     const rows = displayedData.map(r => {
       const dateInfo = formatDateDisplay(r.date, r.time, r.day);
       const omcName = r.omcName || getOmcName(r.ro_id, r);
       if (activeTab === 'Usage Analytics') {
         return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, dateInfo.sub, omcName, r.roName, r.val1]
-          : [r.machineId, dateInfo.formatted, dateInfo.sub, r.roName, r.val1];
+          ? [r.machineId, dateInfo.formatted, omcName, r.roName, r.val1]
+          : [r.machineId, dateInfo.formatted, r.roName, r.val1];
       } else {
         return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, dateInfo.sub, omcName, r.roName, r.val2 || 'Alert', r.val1]
-          : [r.machineId, dateInfo.formatted, dateInfo.sub, r.roName, r.val2 || 'Alert', r.val1];
+          ? [r.machineId, dateInfo.formatted, omcName, r.roName, r.val2 || r.severity || 'Low', r.val1]
+          : [r.machineId, dateInfo.formatted, r.roName, r.val2 || r.severity || 'Low', r.val1];
       }
     });
 
@@ -616,23 +623,23 @@ const Reports = () => {
 
     const columns = activeTab === 'Usage Analytics'
       ? (isSuperAdmin
-          ? ['MACHINE ID', 'DATE', 'TIME', 'OMC', 'RO / LOCATION', 'VISITS (FOOTFALL)']
-          : ['MACHINE ID', 'DATE', 'TIME', 'RO / LOCATION', 'VISITS (FOOTFALL)'])
+          ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'MACHINE USAGE (VISITS)']
+          : ['MACHINE ID', 'DATE', 'RO', 'MACHINE USAGE (VISITS)'])
       : (isSuperAdmin
-          ? ['MACHINE ID', 'DATE', 'TIME', 'OMC', 'RO / LOCATION', 'ALERT TYPE', 'DETAILS / ISSUE']
-          : ['MACHINE ID', 'DATE', 'TIME', 'RO / LOCATION', 'ALERT TYPE', 'DETAILS / ISSUE']);
+          ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'SEVERITY', 'SENSOR ALERT']
+          : ['MACHINE ID', 'DATE', 'RO', 'SEVERITY', 'SENSOR ALERT']);
 
     const rows = displayedData.map(r => {
       const dateInfo = formatDateDisplay(r.date, r.time, r.day);
       const omcName = r.omcName || getOmcName(r.ro_id, r);
       if (activeTab === 'Usage Analytics') {
         return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, dateInfo.sub, omcName, r.roName, `${r.val1} visits`]
-          : [r.machineId, dateInfo.formatted, dateInfo.sub, r.roName, `${r.val1} visits`];
+          ? [r.machineId, dateInfo.formatted, omcName, r.roName, `${r.val1} visits`]
+          : [r.machineId, dateInfo.formatted, r.roName, `${r.val1} visits`];
       } else {
         return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, dateInfo.sub, omcName, r.roName, r.val2 || 'Sensor Alert', r.val1 || '-']
-          : [r.machineId, dateInfo.formatted, dateInfo.sub, r.roName, r.val2 || 'Sensor Alert', r.val1 || '-'];
+          ? [r.machineId, dateInfo.formatted, omcName, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-']
+          : [r.machineId, dateInfo.formatted, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-'];
       }
     });
 
@@ -678,17 +685,13 @@ const Reports = () => {
   };
 
   // Helper to format date cleanly
-  const formatDateDisplay = (dateVal, timeVal = '10:30 AM') => {
+  const formatDateDisplay = (dateVal) => {
     try {
-      let y, m, d, time = timeVal;
+      let y, m, d;
       let dateStr = dateVal;
 
       if (dateStr && dateStr.includes(',')) {
-        const parts = dateStr.split(',');
-        dateStr = parts[0].trim();
-        if (!time || time === '--') {
-          time = parts[1].trim();
-        }
+        dateStr = dateStr.split(',')[0].trim();
       }
 
       if (dateStr && dateStr.includes('/')) {
@@ -707,18 +710,15 @@ const Reports = () => {
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const dayFormatted = String(d).padStart(2, '0');
         const formattedDate = `${dayFormatted} ${monthNames[m]} ${y}`;
-        const cleanTime = (time && time !== '--' && !time.includes('/')) ? time : '10:30 AM';
 
         return {
-          formatted: formattedDate,
-          sub: cleanTime
+          formatted: formattedDate
         };
       }
     } catch (e) {}
 
     return { 
-      formatted: dateVal || 'N/A', 
-      sub: (timeVal && timeVal !== '--') ? timeVal : '10:30 AM' 
+      formatted: dateVal || 'N/A'
     };
   };
 
@@ -741,25 +741,45 @@ const Reports = () => {
   };
 
   // Filtered rows based on quick search
+  // Filtered rows based on quick search
   const displayedData = reportData.filter(row => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return true;
-    const cleanNum = term.replace(/^[#id\s:\-_]+/i, '').trim();
+    const cleanNum = term.replace(/^(?:#|id[:\s_-]*)/i, '').trim();
     const rowId = String(row.id || '');
     const mId = String(row.machineId || '').toLowerCase();
     const omc = String(row.omcName || '').toLowerCase();
     const ro = String(row.roName || '').toLowerCase();
     const dateInfo = formatDateDisplay(row.date, row.time, row.day);
 
-    if (cleanNum && (cleanNum === rowId || cleanNum === mId || mId.endsWith(cleanNum))) return true;
-    if (mId.includes(term) || matchesMachineQuery(mId, term) || (cleanNum && matchesMachineQuery(mId, cleanNum)) || omc.includes(term) || ro.includes(term)) return true;
+    const isBoilerplate = /^(s|p|sb|bp|2t|2p)$/i.test(term);
 
-    const searchable = `${rowId} ${mId} ${omc} ${ro} ${row.date || ''} ${dateInfo.formatted || ''} ${dateInfo.sub || ''} ${row.time || ''} ${row.val1 ?? ''} ${row.val2 ?? ''}`.toLowerCase();
+    // 1. OMC Match
+    if (omc && (omc === term || omc.includes(term) || (term.length >= 2 && omc.startsWith(term)))) return true;
+
+    // 2. RO Match
+    if (ro && (ro === term || ro.includes(term))) return true;
+
+    // 3. Machine ID & Numeric match
+    if (cleanNum && /^\d+$/.test(cleanNum) && (cleanNum === rowId || cleanNum === mId || mId.endsWith(cleanNum))) return true;
+    if (mId === term || (!isBoilerplate && mId.includes(term)) || matchesMachineQuery(mId, term)) return true;
+    if (searchable.includes(term)) return true;
+
+    // 4. Other fields & multi-word
+    const searchable = `${rowId} ${omc} ${ro} ${row.date || ''} ${dateInfo.formatted || ''} ${row.val1 ?? ''} ${row.val2 ?? ''}`.toLowerCase();
     const searchWords = term.split(/\s+/).filter(Boolean);
-    return searchWords.every(word => {
-      const cw = word.replace(/^[#id\s:\-_]+/i, '').trim();
-      return searchable.includes(word) || matchesMachineQuery(mId, word) || (cw && matchesMachineQuery(mId, cw));
-    });
+    if (searchWords.length > 1) {
+      return searchWords.every(word => {
+        const cw = word.replace(/^(?:#|id[:\s_-]*)/i, '').trim();
+        const isBp = /^(s|p|sb|bp|2t|2p)$/i.test(word);
+        if (omc && (omc.includes(word) || (word.length >= 2 && omc.startsWith(word)))) return true;
+        if (ro && ro.includes(word)) return true;
+        if (mId === word || (!isBp && mId.includes(word)) || matchesMachineQuery(mId, word) || (cw && matchesMachineQuery(mId, cw))) return true;
+        return searchable.includes(word);
+      });
+    }
+
+    return false;
   });
 
   // Total Usage Metric for Table Footer
@@ -767,7 +787,7 @@ const Reports = () => {
 
   // Pagination State (25 records per page for clean visibility)
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
+  const itemsPerPage = 10;
 
   // Reset to page 1 whenever filters or search term change
   useEffect(() => {
@@ -1007,9 +1027,19 @@ const Reports = () => {
                 Financial Year
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: filterType === 'Date Range' ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: filterType === 'Date Range' ? '600' : 'normal' }}>
-                <input type="radio" name="filterType" checked={filterType === 'Date Range'} onChange={() => setFilterType('Date Range')} />
-                Date Range
-              </label>
+                <input 
+                type="radio" 
+                name="filterType" 
+                checked={filterType === 'Date Range'} 
+                onChange={() => {
+                  setFilterType('Date Range');
+                  const todayStr = getTodayFormatted();
+                  setToDate(todayStr);
+                  setFromDate(prev => (prev && prev <= todayStr) ? prev : getPastDateFormatted(6));
+                }} 
+              />
+              Date Range
+            </label>
             </div>
           </div>
           
@@ -1030,21 +1060,72 @@ const Reports = () => {
             <>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>From Date</label>
-                <input 
-                  type="date" 
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', color: 'var(--text-primary)', colorScheme: 'dark light' }} 
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Calendar size={16} color="var(--text-secondary)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 1 }} />
+                  <input 
+                    type="date" 
+                    value={fromDate}
+                    max={toDate && toDate <= getTodayFormatted() ? toDate : getTodayFormatted()}
+                    onClick={(e) => { try { e.target.showPicker && e.target.showPicker(); } catch (_) {} }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const todayStr = getTodayFormatted();
+                      if (val > todayStr) return;
+                      setFromDate(val);
+                      if (toDate && val > toDate) {
+                        setToDate(val);
+                      }
+                    }}
+                    style={{ 
+                      width: '100%', 
+                      height: '42px',
+                      boxSizing: 'border-box',
+                      padding: '0.65rem 1rem 0.65rem 2.4rem', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--border-color)', 
+                      background: 'var(--surface-bg)', 
+                      color: 'var(--text-primary)', 
+                      colorScheme: 'dark light', 
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }} 
+                  />
+                </div>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>To Date</label>
-                <input 
-                  type="date" 
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', color: 'var(--text-primary)', colorScheme: 'dark light' }} 
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Calendar size={16} color="var(--text-secondary)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', zIndex: 1 }} />
+                  <input 
+                    type="date" 
+                    value={toDate}
+                    min={fromDate || undefined}
+                    max={getTodayFormatted()}
+                    onClick={(e) => { try { e.target.showPicker && e.target.showPicker(); } catch (_) {} }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const todayStr = getTodayFormatted();
+                      if (val > todayStr) return;
+                      setToDate(val);
+                      if (fromDate && val < fromDate) {
+                        setFromDate(val);
+                      }
+                    }}
+                    style={{ 
+                      width: '100%', 
+                      height: '42px',
+                      boxSizing: 'border-box',
+                      padding: '0.65rem 1rem 0.65rem 2.4rem', 
+                      borderRadius: '6px', 
+                      border: '1px solid var(--border-color)', 
+                      background: 'var(--surface-bg)', 
+                      color: 'var(--text-primary)', 
+                      colorScheme: 'dark light', 
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }} 
+                  />
+                </div>
               </div>
             </>
           )}
@@ -1119,11 +1200,14 @@ const Reports = () => {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.02)' }}>
               <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>MACHINE ID</th>
-              <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', minWidth: '155px', whiteSpace: 'nowrap' }}>DATE & TIME</th>
+              <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', minWidth: '130px', whiteSpace: 'nowrap' }}>DATE</th>
               {isSuperAdmin && (
                 <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>OMC</th>
               )}
               <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>RO</th>
+              {activeTab === 'Hygiene & Alerts Report' && (
+                <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', textAlign: 'center' }}>SEVERITY</th>
+              )}
               <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>
                 {activeTab === 'Usage Analytics' ? 'MACHINE USAGE (VISITS)' : 'SENSOR ALERT'}
               </th>
@@ -1132,7 +1216,7 @@ const Reports = () => {
           <tbody className="screen-table-body">
             {!isFilterApplied ? (
               <tr>
-                <td colSpan={isSuperAdmin ? 5 : 4} style={{ padding: '5rem 2rem', textAlign: 'center' }}>
+                <td colSpan={isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 6 : 5) : (activeTab === "Hygiene & Alerts Report" ? 5 : 4)} style={{ padding: '5rem 2rem', textAlign: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.85rem' }}>
                     <div style={{ 
                       width: '64px', 
@@ -1164,14 +1248,9 @@ const Reports = () => {
                       {row.machineId}
                     </td>
                     <td style={{ padding: '0.75rem 1.25rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                          {dateInfo.formatted}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap' }}>
-                          {row.day ? `${row.day} • ` : ''}{dateInfo.sub}
-                        </span>
-                      </div>
+                      <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                        {dateInfo.formatted}
+                      </span>
                     </td>
                     {isSuperAdmin && (
                       <td style={{ padding: '0.75rem 1.25rem' }}>
@@ -1195,6 +1274,29 @@ const Reports = () => {
                         </span>
                       </div>
                     </td>
+                    {activeTab === 'Hygiene & Alerts Report' && (
+                      <td style={{ padding: '0.75rem 1.25rem', textAlign: 'center' }}>
+                        {(() => {
+                          const sev = row.val2 || row.severity || 'Low';
+                          const sevColor = (sev === 'Danger' || sev === 'Critical' || sev === 'High') ? '#ef4444' :
+                                           (sev === 'Medium' || sev === 'Warning') ? '#f59e0b' : '#3b82f6';
+                          return (
+                            <span style={{ 
+                              padding: '0.25rem 0.65rem', 
+                              borderRadius: '999px', 
+                              background: `${sevColor}18`, 
+                              color: sevColor,
+                              border: `1px solid ${sevColor}33`,
+                              fontWeight: '700', 
+                              fontSize: '0.75rem',
+                              display: 'inline-block'
+                            }}>
+                              {sev}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                    )}
                     <td style={{ padding: '0.75rem 1.25rem', color: 'var(--text-primary)', fontWeight: '600' }}>
                       {activeTab === 'Usage Analytics' ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1209,20 +1311,8 @@ const Reports = () => {
                           </span>
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
-                            {row.val2 !== 'Normal' ? renderAlertIcon(row.type || row.val2) : <CheckCircle2 size={16} color="#059669" />}
-                            {row.val2 === 'Danger' && (
-                              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444' }}>
-                                DANGER
-                              </span>
-                            )}
-                            {row.val2 === 'Low' && (
-                              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
-                                WARNING
-                              </span>
-                            )}
-                          </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {renderAlertIcon(row.type || row.val2)}
                           <span style={{ color: 'var(--text-primary)', fontSize: '0.875rem' }}>{row.val1}</span>
                         </div>
                       )}
@@ -1232,7 +1322,7 @@ const Reports = () => {
               })
             ) : (
               <tr>
-                <td colSpan={isSuperAdmin ? 5 : 4} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <td colSpan={isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 6 : 5) : (activeTab === "Hygiene & Alerts Report" ? 5 : 4)} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   {searchTerm.trim() ? `No matching records found for "${searchTerm}".` : 'No records found for the selected filters.'}
                 </td>
               </tr>
@@ -1250,7 +1340,7 @@ const Reports = () => {
                       {row.machineId}
                     </td>
                     <td style={{ padding: '8px 12px', color: '#334155', fontSize: '9pt' }}>
-                      {dateInfo.formatted} ({row.day ? `${row.day}, ` : ''}{dateInfo.sub})
+                      {dateInfo.formatted}
                     </td>
                     {isSuperAdmin && (
                       <td style={{ padding: '8px 12px', color: '#1e293b', fontWeight: '700', fontSize: '9pt' }}>
@@ -1260,8 +1350,19 @@ const Reports = () => {
                     <td style={{ padding: '8px 12px', color: '#334155', fontSize: '9pt' }}>
                       {row.roName}
                     </td>
+                    {activeTab === 'Hygiene & Alerts Report' && (
+                      <td style={{ 
+                        padding: '8px 12px', 
+                        color: (row.val2 === 'Danger' || row.val2 === 'High' || row.val2 === 'Critical') ? '#e11d48' : '#2563eb', 
+                        fontWeight: 'bold', 
+                        fontSize: '9pt', 
+                        textAlign: 'center' 
+                      }}>
+                        {row.val2 || row.severity || 'Low'}
+                      </td>
+                    )}
                     <td style={{ padding: '8px 12px', color: '#1e293b', fontWeight: '600', fontSize: '9pt' }}>
-                      {activeTab === 'Usage Analytics' ? `${row.val1} visits` : `${row.val2 || 'Alert'}: ${row.val1}`}
+                      {activeTab === 'Usage Analytics' ? `${row.val1} visits` : row.val1}
                     </td>
                   </tr>
                 );
@@ -1272,22 +1373,52 @@ const Reports = () => {
 
         {/* Pagination Controls - only shown when filter is applied and data exists */}
         {isFilterApplied && totalItems > 0 && (
-          <div className="no-print" style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.01)' }}>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="no-print" style={{ 
+            padding: '1rem 1.5rem', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            flexWrap: 'wrap',
+            gap: '1rem',
+            borderTop: '1px solid var(--border-color)', 
+            backgroundColor: 'rgba(0,0,0,0.01)' 
+          }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '500' }}>
+              Showing <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{Math.min(startIndex + 1, totalItems)}</span> to <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{Math.min(startIndex + itemsPerPage, totalItems)}</span> of <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{totalItems}</span> records
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <button 
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                style={{ padding: '0.5rem 1rem', border: '1px solid var(--border-color)', borderRadius: '6px', background: currentPage === 1 ? 'var(--border-color)' : 'var(--surface-bg)', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)', fontWeight: '500' }}
+                style={{ 
+                  padding: '0.45rem 1rem', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '6px', 
+                  background: currentPage === 1 ? 'var(--border-color)' : 'var(--surface-bg)', 
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer', 
+                  color: 'var(--text-primary)', 
+                  fontWeight: '500',
+                  fontSize: '0.85rem'
+                }}
               >
                 Previous
               </button>
-              <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.5rem', fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
                 {currentPage} / {Math.max(totalPages, 1)}
               </div>
               <button 
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages || totalPages === 0}
-                style={{ padding: '0.5rem 1rem', border: '1px solid var(--border-color)', borderRadius: '6px', background: currentPage === totalPages || totalPages === 0 ? 'var(--border-color)' : 'var(--surface-bg)', cursor: currentPage === totalPages || totalPages === 0 ? 'not-allowed' : 'pointer', color: 'var(--text-primary)', fontWeight: '500' }}
+                style={{ 
+                  padding: '0.45rem 1rem', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '6px', 
+                  background: currentPage === totalPages || totalPages === 0 ? 'var(--border-color)' : 'var(--surface-bg)', 
+                  cursor: currentPage === totalPages || totalPages === 0 ? 'not-allowed' : 'pointer', 
+                  color: 'var(--text-primary)', 
+                  fontWeight: '500',
+                  fontSize: '0.85rem'
+                }}
               >
                 Next
               </button>

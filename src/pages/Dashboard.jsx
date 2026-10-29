@@ -87,7 +87,7 @@ const SuperAdminDashboard = () => {
           const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
           if (isRoInactive) return false;
           const s = String(m.status || '').trim().toUpperCase();
-          return s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
+          return s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
         }).length;
         setActiveMachinesCount(activeCount);
         setInactiveMachinesCount(savedMachines.length - activeCount);

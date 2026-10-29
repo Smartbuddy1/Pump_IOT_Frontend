@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { getConsolidatedAlerts } from '../utils/alertUtils';
 import { matchesMachineQuery } from '../utils/machineSearchUtils';
 import { calculateMachineRating } from '../components/TopRatedMachinesCard';
+import { socket } from '../hooks/useSocket';
 
 const Machines = () => {
   const location = useLocation();
@@ -34,11 +35,12 @@ const Machines = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [showWifiPassword, setShowWifiPassword] = useState(false);
+  const [showViewWifiPassword, setShowViewWifiPassword] = useState(false);
   
   // formData includes new fields for IoT
   const [formData, setFormData] = useState({ 
     id: '', 
-    status: 'ACTIVE', 
+    status: 'Inactive', 
     roId: '',
     toiletId: '',
     toiletType: 'E2T Eco-Toilet',
@@ -177,7 +179,9 @@ const Machines = () => {
           }
 
           const isParentRoInactive = (m.ro_status && String(m.ro_status).toLowerCase() === 'inactive') || (matchedRoObj && String(matchedRoObj.status || '').toLowerCase() === 'inactive');
-          const effectiveStatus = isParentRoInactive ? 'Inactive' : (m.status || 'ACTIVE');
+          const rawMStatus = String(m.status || '').trim().toLowerCase();
+          const isMActive = rawMStatus === 'active' || rawMStatus === 'running' || rawMStatus === 'online' || rawMStatus === 'operational';
+          const effectiveStatus = isParentRoInactive ? 'Inactive' : (isMActive ? 'Active' : 'Inactive');
 
           let rawName = m.name || m.id || `SBP2T${100 + Number(m.db_id || 1)}`;
           let cleanMachineName = String(rawName).replace(/SBE2T/gi, 'SBP2T');
@@ -261,16 +265,29 @@ const Machines = () => {
     return 'Unassigned';
   };
 
-  // Helper to get OMC (Client) Name based on RO
-  const getClientNameByRo = (roId) => {
-    const ro = getRo(roId);
-    if (!ro) {
-      return 'N/A';
+  // Helper to get OMC (Client) Name based on RO or machine object
+  const getClientNameByRo = (roId, machineObj = null) => {
+    if (machineObj) {
+      if (machineObj.omcName) return machineObj.omcName;
+      if (machineObj.omc_name) return machineObj.omc_name;
     }
-    const omcId = ro.omc_id || ro.omcId;
-    if (!omcId) return 'N/A';
-    const omc = omcList.find(o => String(o.id) === String(omcId));
-    return omc ? omc.name : 'Unknown Client';
+    const ro = getRo(roId);
+    if (ro) {
+      if (ro.omcName) return ro.omcName;
+      if (ro.omc_name) return ro.omc_name;
+      const omcId = ro.omc_id || ro.omcId;
+      if (omcId) {
+        const omc = omcList.find(o => String(o.id) === String(omcId) || String(o.db_id) === String(omcId));
+        if (omc && omc.name) return omc.name;
+      }
+    }
+    const targetOmc = machineObj?.omc_id || machineObj?.omcId;
+    if (targetOmc) {
+      const omc = omcList.find(o => String(o.id) === String(targetOmc) || String(o.db_id) === String(targetOmc));
+      if (omc && omc.name) return omc.name;
+    }
+    if (isOmcAdmin && assignedOmc?.name) return assignedOmc.name;
+    return 'N/A';
   };
 
   const toLocalYMD = (val) => {
@@ -416,6 +433,76 @@ const Machines = () => {
   );
   const userOmcId = user?.omcId || user?.omc_id;
 
+  const [remoteDuplicateId, setRemoteDuplicateId] = useState(null);
+
+  // Real-time duplicate ID check across current scoped machines
+  const localDuplicate = React.useMemo(() => {
+    if (!formData.id) return false;
+    const cleanCandidate = String(formData.id).trim().toLowerCase();
+    if (cleanCandidate === 'sbp2t' || !cleanCandidate) return false;
+    return machines.some(m => {
+      if (modalType === 'edit') {
+        const isSelf = String(m.db_id || m.id) === String(selectedItem?.db_id || selectedItem?.id);
+        if (isSelf) return false;
+      }
+      const existingName = String(m.name || m.id || '').trim().toLowerCase();
+      return existingName === cleanCandidate;
+    });
+  }, [formData.id, machines, modalType, selectedItem]);
+
+  // Global cross-tenant duplicate ID check for OMC Admin & RO Manager
+  useEffect(() => {
+    if (!formData.id) {
+      setRemoteDuplicateId(null);
+      return;
+    }
+    const cleanSuffix = String(formData.id).replace(/^SBP2T/i, '').trim();
+    if (!cleanSuffix) {
+      setRemoteDuplicateId(null);
+      return;
+    }
+    const fullCandidate = `SBP2T${cleanSuffix}`;
+
+    if (localDuplicate) {
+      setRemoteDuplicateId(fullCandidate);
+      return;
+    }
+
+    let isCurrent = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get(`/feedback/machine/${encodeURIComponent(fullCandidate)}`);
+        if (!isCurrent) return;
+        const resData = res.data?.data;
+        const isFound = res.data?.message === 'Machine details retrieved' && resData?.ro_id !== undefined;
+        if (isFound) {
+          if (modalType === 'edit') {
+            const selfId = String(selectedItem?.db_id || selectedItem?.id);
+            if (selfId === String(resData.id)) {
+              setRemoteDuplicateId(null);
+              return;
+            }
+          }
+          setRemoteDuplicateId(fullCandidate);
+        } else {
+          setRemoteDuplicateId(null);
+        }
+      } catch (err) {
+        // Silently catch network glitches during typing
+      }
+    }, 120);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [formData.id, localDuplicate, modalType, selectedItem]);
+
+  const isDuplicateId = Boolean(
+    localDuplicate || 
+    (remoteDuplicateId && remoteDuplicateId.toLowerCase() === String(formData.id).trim().toLowerCase())
+  );
+
   const assignedOmc = React.useMemo(() => {
     if (!isOmcAdmin) return null;
     if (userOmcId) {
@@ -468,56 +555,138 @@ const Machines = () => {
 
   const filteredMachines = (() => {
     let baseList = machines;
-    if (isOmcAdmin && targetOmcId && roList.length > 0) {
-      const validRoIdsForOmc = new Set(roList.filter(r => !targetOmcId || String(r.omc_id || r.omcId) === String(targetOmcId)).map(r => String(r.id)));
-      const filtered = baseList.filter(m => {
+    
+    // Role-based tenant restriction
+    if (isRoUser) {
+      const userRoId = String(user?.roId || user?.ro_id || specificRo?.id || '');
+      if (userRoId) {
+        baseList = baseList.filter(m => String(m.roId || m.ro_id || '') === userRoId);
+      }
+    } else if (isOmcAdmin && (targetOmcId || assignedOmc?.id) && roList.length > 0) {
+      const currentOmcId = String(targetOmcId || assignedOmc?.id);
+      const validRoIdsForOmc = new Set(
+        roList
+          .filter(r => String(r.omc_id || r.omcId) === currentOmcId)
+          .map(r => String(r.id ?? r.db_id))
+      );
+      baseList = baseList.filter(m => {
         const mRo = String(m.roId || m.ro_id || '');
         return validRoIdsForOmc.has(mRo);
       });
-      baseList = filtered;
     }
+
     const term = searchTerm.trim().toLowerCase();
     if (!term) return baseList;
 
-    const cleanNum = term.replace(/^[#idmch\s:\-_]+/i, '').trim();
+    // Clean number prefix without corrupting search query letters like 'h' in 'hp' or 'i' in 'iocl'
+    const cleanNum = term.replace(/^(?:#|id[:\s_-]*|mch[:\s_-]*)/i, '').trim();
 
     return baseList.filter((machine, index) => {
       const displayId = String(index + 1);
       const mDbId = String(machine.db_id || '');
       const machineId = String(machine.id || machine.name || '').toLowerCase();
       const cleanDigits = machineId.replace(/\D/g, '');
-      const roName = String(getRoName(machine.roId) || '').toLowerCase();
-      const clientName = String(getClientNameByRo(machine.roId) || '').toLowerCase();
+      const roName = String(getRoName(machine.roId || machine.ro_id) || '').toLowerCase();
+      const clientName = String(getClientNameByRo(machine.roId || machine.ro_id, machine) || '').toLowerCase();
       const typeStr = String(machine.type || '').toLowerCase();
       const statusStr = String(machine.status || '').toLowerCase();
 
-      // 1. Direct ID & Last 3 Digits matches
-      if (machineId === term) return true;
-      if (machineId.includes(term)) return true;
-      if (matchesMachineQuery(machineId, term)) return true;
-      if (cleanNum && (cleanNum === displayId || term === `#${displayId}` || term === `id ${displayId}`)) return true;
-      if (cleanNum && cleanNum === mDbId) return true;
-      if (cleanNum && cleanNum.length >= 2 && (cleanDigits.endsWith(cleanNum) || machineId.endsWith(cleanNum))) return true;
+      // 1. OMC (Client) Match - Supports 'hp', 'hpcl', 'bp', 'bpcl', 'iocl', etc.
+      const matchesOmc = clientName && (
+        clientName === term ||
+        clientName.includes(term) ||
+        (term.length >= 2 && clientName.startsWith(term))
+      );
+      if (matchesOmc) return true;
 
-      // 2. Text matches
-      if (roName.includes(term)) return true;
-      if (clientName.includes(term)) return true;
+      // 2. RO (Petrol Pump) Name Match
+      const matchesRo = roName && (roName === term || roName.includes(term));
+      if (matchesRo) return true;
+
+      // 3. Machine ID & Numeric Suffix matches
+      // Standard boilerplate fragments like 's', 'p', 'sb', 'bp', '2t', '2p' should NOT match by substring
+      const isBoilerplate = /^(s|p|sb|bp|2t|2p)$/i.test(term);
+      if (machineId === term) return true;
+      if (!isBoilerplate && machineId.includes(term)) return true;
+      if (matchesMachineQuery(machineId, term)) return true;
+      if (/^\d+$/.test(cleanNum)) {
+        if (cleanNum === displayId || cleanNum === mDbId) return true;
+        if (cleanNum.length >= 2 && (cleanDigits.endsWith(cleanNum) || machineId.endsWith(cleanNum))) return true;
+      }
+
+      // 4. Other text matches
       if (typeStr.includes(term)) return true;
       if (statusStr.includes(term)) return true;
 
-      // 3. Multi-word search
+      // 5. Multi-word search
       const searchWords = term.split(/\s+/).filter(Boolean);
-      return searchWords.every(word => {
-        const cw = word.replace(/^[#idmch\s:\-_]+/i, '').trim();
-        if (cw && (cw === displayId || cw === mDbId)) return true;
-        if (machineId.includes(word) || matchesMachineQuery(machineId, word) || (cw && matchesMachineQuery(machineId, cw))) return true;
-        if (roName.includes(word)) return true;
-        if (clientName.includes(word)) return true;
-        if (typeStr.includes(word)) return true;
-        return false;
-      });
+      if (searchWords.length > 1) {
+        return searchWords.every(word => {
+          const cw = word.replace(/^(?:#|id[:\s_-]*|mch[:\s_-]*)/i, '').trim();
+          const isBp = /^(s|p|sb|bp|2t|2p)$/i.test(word);
+
+          if (clientName && (clientName.includes(word) || (word.length >= 2 && clientName.startsWith(word)))) return true;
+          if (roName && roName.includes(word)) return true;
+          if (machineId === word || (!isBp && machineId.includes(word))) return true;
+          if (matchesMachineQuery(machineId, word) || (cw && matchesMachineQuery(machineId, cw))) return true;
+          if (/^\d+$/.test(cw) && (cw === displayId || cw === mDbId)) return true;
+          if (typeStr && typeStr.includes(word)) return true;
+          if (statusStr && statusStr.includes(word)) return true;
+          return false;
+        });
+      }
+
+      return false;
     });
   })();
+
+  // Real-time hardware telemetry and status listener
+  useEffect(() => {
+    const handleStatusUpdate = (data) => {
+      if (!data || !data.machineId) return;
+      const target = String(data.machineId).trim().toLowerCase();
+      const rawS = String(data.status || '').trim().toLowerCase();
+      const newStatus = (rawS === 'active' || rawS === 'running' || rawS === 'online' || rawS === 'operational') ? 'Active' : 'Inactive';
+      setMachines(prev => prev.map(m => {
+        const mId = String(m.id || '').trim().toLowerCase();
+        const mName = String(m.name || '').trim().toLowerCase();
+        if (mId === target || mName === target || mId.replace(/\D/g, '') === target.replace(/\D/g, '')) {
+          return { ...m, status: newStatus };
+        }
+        return m;
+      }));
+    };
+
+    const handleLiveTelemetry = (data) => {
+      if (!data || !data.machineId) return;
+      const target = String(data.machineId).trim().toLowerCase();
+      setMachines(prev => prev.map(m => {
+        const mId = String(m.id || '').trim().toLowerCase();
+        const mName = String(m.name || '').trim().toLowerCase();
+        if (mId === target || mName === target || mId.replace(/\D/g, '') === target.replace(/\D/g, '')) {
+          return {
+            ...m,
+            status: 'Active',
+            liveTemp: data.temperature || m.liveTemp,
+            liveWater: data.water || m.liveWater,
+            liveHumidity: data.humidity || m.liveHumidity,
+            liveOdour: data.odour || m.liveOdour,
+            liveNh3: data.nh3 !== undefined ? `${data.nh3} PPM` : m.liveNh3,
+            liveH2s: data.h2s !== undefined ? `${data.h2s} PPM` : m.liveH2s
+          };
+        }
+        return m;
+      }));
+    };
+
+    socket.on('machine_status_update', handleStatusUpdate);
+    socket.on('live_data_update', handleLiveTelemetry);
+
+    return () => {
+      socket.off('machine_status_update', handleStatusUpdate);
+      socket.off('live_data_update', handleLiveTelemetry);
+    };
+  }, []);
 
   // Pagination logic
   const totalPages = Math.ceil(filteredMachines.length / itemsPerPage);
@@ -532,6 +701,8 @@ const Machines = () => {
   const openModal = (type, item = null) => {
     setModalType(type);
     setSelectedItem(item);
+    setShowViewWifiPassword(false);
+    setRemoteDuplicateId(null);
     if (type === 'edit' && item) {
       const matchedRo = getRo(item.roId || item.ro_id);
       const tempMediumVal = String(item.tempLimitMedium || '30');
@@ -611,11 +782,9 @@ const Machines = () => {
         defaultRoId = matchingRos.length > 0 ? String(matchingRos[0].id) : '';
       }
 
-      const newId = getNextSequentialId(defaultRoId);
-
-      setFormData({ 
-        id: newId, 
-        status: 'ACTIVE', 
+      setFormData({
+        id: '', 
+        status: 'Inactive', 
         roId: defaultRoId, 
         omcId: defaultOmcId, 
         toiletId: '',
@@ -664,6 +833,8 @@ const Machines = () => {
     setSelectedItem(null);
     setOpenedFromDashboard(false);
     setShowWifiPassword(false);
+    setShowViewWifiPassword(false);
+    setRemoteDuplicateId(null);
     setFormData({ id: '', status: 'ACTIVE', roId: '', toiletId: '', toiletType: '', installDate: '', wifiName: '', wifiPassword: '', liveTemp: '28', liveHumidity: '50', liveWater: 'Normal', liveOdour: '40', liveNh3: '22', liveH2s: '14', tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', waterLimitLow: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20' });
   };
 
@@ -680,9 +851,40 @@ const Machines = () => {
       }
     }
 
-    if (!formData.id?.trim()) {
-      formData.id = getNextSequentialId(activeRoId);
+    const cleanSuffix = String(formData.id || '').replace(/^SBP2T/i, '').trim();
+    if (!cleanSuffix) {
+      alert('Please enter Machine ID (after SBP2T)');
+      return;
     }
+    formData.id = `SBP2T${cleanSuffix}`;
+
+    const candidateId = formData.id.trim();
+    const isDuplicate = machines.some(m => {
+      if (modalType === 'edit') {
+        const isSelf = String(m.db_id || m.id) === String(selectedItem?.db_id || selectedItem?.id);
+        if (isSelf) return false;
+      }
+      const existingName = String(m.name || m.id || '').trim().toLowerCase();
+      return existingName === candidateId.toLowerCase();
+    });
+
+    if (isDuplicate || isDuplicateId) {
+      alert(`Machine ID "${candidateId}" already exists! Duplicate Machine IDs are not allowed. Please enter a unique ID.`);
+      return;
+    }
+
+    // Verify against global database in real-time before saving
+    try {
+      const checkRes = await api.get(`/feedback/machine/${encodeURIComponent(candidateId)}`);
+      const cData = checkRes.data?.data;
+      const isGlobalDup = checkRes.data?.message === 'Machine details retrieved' && cData?.ro_id !== undefined;
+      if (isGlobalDup) {
+        if (modalType !== 'edit' || (String(cData.id) !== String(selectedItem?.db_id || selectedItem?.id))) {
+          alert(`Machine ID "${candidateId}" already exists! Duplicate Machine IDs are not allowed. Please enter a unique ID.`);
+          return;
+        }
+      }
+    } catch (e) {}
 
     if (isSuperAdmin && !formData.omcId) {
       alert('Please select an OMC (Petrol Company)');
@@ -741,7 +943,7 @@ const Machines = () => {
       const matchedRoObj = getRo(activeRoId);
       const roIdNum = matchedRoObj ? (matchedRoObj.id ?? matchedRoObj.db_id) : (parseInt(String(activeRoId).replace(/\D/g, ''), 10) || activeRoId || 1);
       const isParentRoInactive = matchedRoObj && String(matchedRoObj.status || '').toLowerCase() === 'inactive';
-      const autoStatus = isParentRoInactive ? 'Inactive' : 'Active';
+      const autoStatus = modalType === 'add' ? 'Inactive' : (isParentRoInactive ? 'Inactive' : (selectedItem?.status || 'Inactive'));
       const installDateVal = toLocalYMD(formData.installDate) || toLocalYMD(new Date());
       const machineName = formData.id.trim();
 
@@ -899,7 +1101,8 @@ const Machines = () => {
       }
     } catch (err) {
       console.error("Error saving machine:", err);
-      alert("Failed to save machine");
+      const errMsg = err.response?.data?.message || err.message || "Failed to save machine";
+      alert(errMsg);
     }
   };
 
@@ -1063,7 +1266,7 @@ const Machines = () => {
       return;
     }
 
-    const columns = ['MACHINE ID', 'OMC', 'RO NAME', 'STATUS', 'LIVE TEMP', 'LIVE HUMIDITY', 'LIVE ODOUR', 'LIVE NH3', 'LIVE H2S', 'WATER LEVEL'];
+    const columns = ['MACHINE ID', 'OMC', 'ASSIGNED RO', 'STATUS', 'RATING', 'LIVE TEMP', 'LIVE HUMIDITY', 'LIVE ODOUR', 'LIVE NH3', 'LIVE H2S', 'WATER LEVEL'];
     const rows = filteredMachines.map(m => {
       const s = String(m.status || '').trim().toUpperCase();
       const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
@@ -1238,7 +1441,7 @@ const Machines = () => {
 
           {/* Header for @media print */}
           <thead className="print-only-head">
-            <tr style={{ borderBottom: '1.5px solid #1e293b', fontSize: '9pt', color: '#1e293b', textTransform: 'uppercase', backgroundColor: '#f1f5f9' }}>
+            <tr style={{ borderBottom: '2px solid #047857', fontSize: '9pt', color: '#ffffff', textTransform: 'uppercase', backgroundColor: '#059669' }}>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>MACHINE ID</th>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>OMC</th>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>RO NAME</th>
@@ -1258,7 +1461,7 @@ const Machines = () => {
               const parentRo = getRo(machine.roId);
               const isRoInactive = (machine.ro_status && String(machine.ro_status).toLowerCase() === 'inactive') || (parentRo && String(parentRo.status || '').toLowerCase() === 'inactive');
               const s = isRoInactive ? 'INACTIVE' : String(machine.status || '').trim().toUpperCase();
-              const isActive = !isRoInactive && (s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== ''));
+              const isActive = !isRoInactive && (s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL');
               const rating = getMachineRating(machine);
               const isHigh = rating >= 4.5;
               return (
@@ -1456,30 +1659,57 @@ const Machines = () => {
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
                       Machine ID <span style={{ color: '#ef4444' }}>*</span>
                     </label>
-                    <input 
-                      type="text" 
-                      value={formData.id} 
-                      readOnly={true}
-                      disabled={true}
-                      placeholder="Auto-generated (e.g. SBP2T701)"
-                      style={{ 
-                        width: '100%', 
-                        height: '42px',
-                        boxSizing: 'border-box',
-                        padding: '0.65rem 1rem', 
-                        borderRadius: '8px', 
-                        border: '1px solid var(--border-color)', 
-                        background: 'rgba(0, 0, 0, 0.04)', 
-                        color: 'var(--text-primary)', 
+                    <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                      <span style={{ 
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '0 0.85rem', 
+                        background: 'var(--hover-bg, #f1f5f9)', 
+                        border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
+                        borderRight: 'none', 
+                        borderRadius: '8px 0 0 8px', 
                         fontWeight: '700', 
-                        cursor: 'not-allowed',
-                        opacity: 0.95,
-                        letterSpacing: '0.5px'
-                      }} 
-                    />
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                      🔒 System auto-generated sequence (Non-changeable)
-                    </span>
+                        color: isDuplicateId ? '#ef4444' : 'var(--text-primary)',
+                        fontSize: '0.9rem',
+                        userSelect: 'none'
+                      }}>
+                        SBP2T
+                      </span>
+                      <input 
+                        type="text" 
+                        value={formData.id ? String(formData.id).replace(/^SBP2T/i, '') : ''} 
+                        onChange={(e) => {
+                          const inputSuffix = e.target.value.replace(/^SBP2T/i, '').trim();
+                          setFormData(prev => ({
+                            ...prev,
+                            id: inputSuffix ? `SBP2T${inputSuffix}` : ''
+                          }));
+                        }}
+                        placeholder="Enter ID (e.g. 1404)"
+                        style={{ 
+                          flex: 1, 
+                          height: '42px',
+                          boxSizing: 'border-box',
+                          padding: '0.65rem 1rem', 
+                          borderRadius: '0 8px 8px 0', 
+                          border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
+                          background: 'var(--surface-bg)', 
+                          color: 'var(--text-primary)', 
+                          fontWeight: '700', 
+                          letterSpacing: '0.5px',
+                          outline: 'none'
+                        }} 
+                      />
+                    </div>
+                    {isDuplicateId ? (
+                      <span style={{ fontSize: '0.78rem', color: '#ef4444', fontWeight: '700', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <AlertTriangle size={14} /> Machine ID "{formData.id}" already exists! Please enter a unique ID.
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                        Prefix "SBP2T" followed by your custom ID
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -1493,13 +1723,10 @@ const Machines = () => {
                           const selectedOmc = e.target.value;
                           const filteredRos = roList.filter(ro => !selectedOmc || String(ro.omc_id || ro.omcId) === String(selectedOmc));
                           const newRoId = filteredRos.length > 0 ? String(filteredRos[0].id) : '';
-                          const newSuggestedId = modalType === 'add' ? getNextSequentialId(newRoId) : formData.id;
-
-                          setFormData({ 
-                            ...formData, 
-                            omcId: selectedOmc, 
-                            roId: modalType === 'add' ? newRoId : formData.roId,
-                            id: newSuggestedId 
+                          setFormData({
+                            ...formData,
+                            omcId: selectedOmc,
+                            roId: modalType === 'add' ? newRoId : formData.roId
                           });
                         }}
                         style={{ 
@@ -1579,14 +1806,12 @@ const Machines = () => {
                         value={formData.roId || ''} 
                         onChange={(e) => {
                           const selectedRoId = e.target.value;
-                          const newSuggestedId = modalType === 'add' ? getNextSequentialId(selectedRoId) : formData.id;
                           const matchedRo = roList.find(r => String(r.id) === String(selectedRoId));
                           const parentOmcId = matchedRo?.omc_id || matchedRo?.omcId || formData.omcId;
-                          setFormData({ 
-                            ...formData, 
-                            roId: selectedRoId, 
-                            omcId: isSuperAdmin && parentOmcId ? String(parentOmcId) : formData.omcId,
-                            id: newSuggestedId 
+                          setFormData({
+                            ...formData,
+                            roId: selectedRoId,
+                            omcId: isSuperAdmin && parentOmcId ? String(parentOmcId) : formData.omcId
                           });
                         }} 
                         style={{ 
@@ -1934,8 +2159,7 @@ const Machines = () => {
                     }} 
                     style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #3b82f6', background: 'rgba(59,130,246,0.05)', color: 'var(--text-primary)', fontWeight: '600', cursor: 'pointer' }}
                   >
-                    <option value="Low">Low (Refill Required)</option>
-                    <option value="Disabled">Disabled / Normal</option>
+                    <option value="Low">Low Water</option>
                   </select>
                 </div>
 
@@ -2022,12 +2246,54 @@ const Machines = () => {
                   </div>
 
 
-                  {selectedItem.wifiName && (
-                    <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0.85rem 1.25rem', background: 'var(--surface-bg)' }}>
-                      <div style={{ flex: '0 0 35%', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: '500' }}>WiFi SSID</div>
-                      <div style={{ flex: '1', color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: '600' }}>{selectedItem.wifiName}</div>
+                  <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0.85rem 1.25rem', background: 'var(--surface-bg)' }}>
+                    <div style={{ flex: '0 0 35%', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: '500' }}>WiFi SSID</div>
+                    <div style={{ flex: '1', color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: '600' }}>{selectedItem.wifiName || selectedItem.wifi_name || 'Not Configured'}</div>
+                  </div>
+
+                  <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0.85rem 1.25rem', background: 'var(--surface-bg)', alignItems: 'center' }}>
+                    <div style={{ flex: '0 0 35%', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: '500' }}>WiFi Password</div>
+                    <div style={{ flex: '1', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      {(() => {
+                        const pwd = selectedItem.wifiPassword || selectedItem.wifi_password || '';
+                        if (!pwd) {
+                          return <span style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontStyle: 'italic' }}>Not Set</span>;
+                        }
+                        return (
+                          <>
+                            <span style={{ 
+                              fontFamily: showViewWifiPassword ? 'inherit' : 'monospace', 
+                              letterSpacing: showViewWifiPassword ? 'normal' : '2px', 
+                              fontWeight: showViewWifiPassword ? '600' : 'bold',
+                              fontSize: showViewWifiPassword ? '0.875rem' : '1.1rem',
+                              color: 'var(--text-primary)'
+                            }}>
+                              {showViewWifiPassword ? pwd : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setShowViewWifiPassword(prev => !prev)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: showViewWifiPassword ? '#6366f1' : 'var(--text-secondary)',
+                                borderRadius: '4px',
+                                transition: 'color 0.2s'
+                              }}
+                              title={showViewWifiPassword ? "Hide password" : "Show password"}
+                            >
+                              {showViewWifiPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                          </>
+                        );
+                      })()}
                     </div>
-                  )}
+                  </div>
 
                   {/* Hygiene Rating Row */}
                   <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', padding: '0.85rem 1.25rem', background: 'var(--surface-bg)', alignItems: 'center' }}>
@@ -2111,44 +2377,7 @@ const Machines = () => {
                   </div>
                 </div>
 
-                {/* CLEANLINESS & HYGIENE OVERVIEW CARD */}
-                <div style={{
-                  padding: '0.9rem 1.15rem',
-                  borderRadius: '10px',
-                  border: '1px solid var(--border-color)',
-                  background: isFlawlessClean ? 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(59,130,246,0.04) 100%)' : 'rgba(0,0,0,0.02)',
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                  gap: '0.75rem'
-                }}>
-                  <div style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '2px' }}>CLEANLINESS SCORE</div>
-                    <div style={{ fontSize: '1rem', fontWeight: '800', color: itemRating >= 4.5 ? '#10b981' : '#f59e0b' }}>
-                      {Math.round((itemRating / 5) * 100)}% Spotless
-                    </div>
-                  </div>
 
-                  <div style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '2px' }}>ALERT RECORD</div>
-                    <div style={{ fontSize: '1rem', fontWeight: '800', color: selectedAlerts.length === 0 ? '#10b981' : '#ef4444' }}>
-                      {selectedAlerts.length === 0 ? '0 Active Alerts' : `${selectedAlerts.length} Issue(s)`}
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '2px' }}>ODOUR QUALITY</div>
-                    <div style={{ fontSize: '1rem', fontWeight: '800', color: '#10b981' }}>
-                      {parseFloat(String(selectedItem.liveOdour || '0').replace(/[^0-9.]/g, '')) > 50 ? 'Odour Detected' : 'Fresh & Odourless'}
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '0.6rem 0.75rem', borderRadius: '8px', background: 'var(--surface-bg)', border: '1px solid var(--border-color)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '2px' }}>WATER SANITATION</div>
-                    <div style={{ fontSize: '1rem', fontWeight: '800', color: (String(selectedItem.liveWater).toLowerCase().includes('low') || String(selectedItem.liveWater).toLowerCase().includes('empty')) ? '#ef4444' : '#3b82f6' }}>
-                      {(String(selectedItem.liveWater).toLowerCase().includes('low') || String(selectedItem.liveWater).toLowerCase().includes('empty')) ? 'Low Level' : 'Normal Supply'}
-                    </div>
-                  </div>
-                </div>
 
                 {/* LIVE DATA SECTION */}
                 <div>

@@ -85,7 +85,7 @@ const OMCDashboard = () => {
             ro_id: m.ro_id || m.roId,
             roId: m.ro_id || m.roId,
             type: m.type || 'Dispenser',
-            status: (rawRos.find(r => String(r.id) === String(m.ro_id || m.roId))?.status?.toLowerCase() === 'inactive') ? 'Inactive' : (m.status || 'ACTIVE'),
+            status: (rawRos.find(r => String(r.id) === String(m.ro_id || m.roId))?.status?.toLowerCase() === 'inactive') ? 'Inactive' : (m.status || 'Inactive'),
             isWaterLow,
             liveTemp: m.live_temp ?? m.liveTemp ?? '--',
             liveWater: waterDisplay,
@@ -240,7 +240,7 @@ const OMCDashboard = () => {
   const activeMachinesCount = filteredMachines.filter(m => {
     if (!m) return false;
     const s = String(m.status || '').trim().toUpperCase();
-    return s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
+    return s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
   }).length;
   const inactiveMachinesCount = filteredMachines.length - activeMachinesCount;
   

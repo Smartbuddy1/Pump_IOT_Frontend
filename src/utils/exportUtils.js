@@ -65,32 +65,38 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
     const pageHeight = doc.internal.pageSize.getHeight();
 
     // 1. Draw Logos in Header
+    // Aspect ratio 1.7:1 (e.g. 32mm width x 18mm height)
+    const logoW = 32;
+    const logoH = 18;
+    const logoY = 6.5;
+
     // Left Logo (E2T / OMC / Client Branding)
     try {
-      doc.addImage(LOGO_LEFT_BASE64, 'JPEG', 14, 8, 30, 15);
+      doc.addImage(LOGO_LEFT_BASE64, 'JPEG', 14, logoY, logoW, logoH);
     } catch (e) {
       console.warn("Left logo draw error:", e);
     }
 
     // Right Logo (SmartBuddy Branding)
     try {
-      doc.addImage(LOGO_RIGHT_BASE64, 'PNG', pageWidth - 14 - 32, 8, 32, 15);
+      doc.addImage(LOGO_RIGHT_BASE64, 'PNG', pageWidth - 14 - logoW, logoY, logoW, logoH);
     } catch (e) {
       console.warn("Right logo draw error:", e);
     }
 
-    // 2. Header Text (Centered)
+    // 2. Header Text (Centered safely between both logos, width ~118mm)
     const centerX = pageWidth / 2;
     doc.setTextColor(5, 150, 105); // Emerald Green
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(13.5);
     doc.text("SMARTBUDDY PETROLEUM IOT PLATFORM", centerX, 13, { align: 'center' });
 
     doc.setTextColor(30, 41, 59); // Slate 800
     doc.setFontSize(11);
     doc.text(String(title || 'SYSTEM TELEMETRY REPORT').toUpperCase(), centerX, 19, { align: 'center' });
 
-    // Metadata lines (OMC, RO, Machine, Period)
+    // Metadata lines (OMC, RO, Machine, Period) - Placed safely BELOW the logos (Y > 25mm)
+    // to guarantee ZERO overlap with left or right logos across full page width
     const metaParts = [];
     if (options.clientName && options.clientName !== 'All') metaParts.push(`OMC: ${options.clientName}`);
     if (options.roName && options.roName !== 'All') metaParts.push(`RO: ${options.roName}`);
@@ -101,9 +107,9 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105);
 
-    let currentY = 24;
+    let currentY = logoY + logoH + 3.5; // Starts at Y = 28mm (strictly below the 24.5mm logo bottom)
     if (metaParts.length > 0) {
-      doc.text(metaParts.join('   |   '), centerX, currentY, { align: 'center' });
+      doc.text(metaParts.join('   |   '), centerX, currentY, { align: 'center', maxWidth: pageWidth - 28 });
       currentY += 4.5;
     }
 
@@ -117,11 +123,11 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
     const recordCountText = options.hideTable
       ? ''
       : `   |   Total Records: ${rows ? rows.length : 0}`;
-    doc.text(`Generated: ${genTimestamp}   |   User: ${roleText}${recordCountText}`, centerX, currentY, { align: 'center' });
+    doc.text(`Generated: ${genTimestamp}   |   User: ${roleText}${recordCountText}`, centerX, currentY, { align: 'center', maxWidth: pageWidth - 28 });
 
     // Decorative Accent Line
-    const lineY = Math.max(currentY + 3.5, 29);
-    doc.setDrawColor(29, 78, 216); // Royal Blue
+    const lineY = currentY + 3.5;
+    doc.setDrawColor(5, 150, 105);
     doc.setLineWidth(0.7);
     doc.line(14, lineY, pageWidth - 14, lineY);
 
@@ -166,7 +172,7 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
           overflow: 'linebreak'
         },
         headStyles: {
-          fillColor: [15, 23, 42], // Deep Navy `#0f172a`
+          fillColor: [5, 150, 105], // Emerald Green #059669
           textColor: [255, 255, 255],
           fontStyle: 'bold',
           fontSize: tableFontSize,
@@ -286,19 +292,23 @@ export const exportDashboardPDF = (data = {}) => {
     const pageHeight = doc.internal.pageSize.getHeight();
 
     // 1. Logos
+    const logoW = 32;
+    const logoH = 18;
+    const logoY = 6.5;
+
     try {
-      doc.addImage(LOGO_LEFT_BASE64, 'JPEG', 14, 8, 30, 15);
+      doc.addImage(LOGO_LEFT_BASE64, 'JPEG', 14, logoY, logoW, logoH);
     } catch (e) {}
 
     try {
-      doc.addImage(LOGO_RIGHT_BASE64, 'PNG', pageWidth - 14 - 32, 8, 32, 15);
+      doc.addImage(LOGO_RIGHT_BASE64, 'PNG', pageWidth - 14 - logoW, logoY, logoW, logoH);
     } catch (e) {}
 
     // 2. Header
     const centerX = pageWidth / 2;
     doc.setTextColor(5, 150, 105);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(13.5);
     doc.text("SMARTBUDDY PETROLEUM IOT PLATFORM", centerX, 13, { align: 'center' });
 
     doc.setTextColor(30, 41, 59);
@@ -312,11 +322,11 @@ export const exportDashboardPDF = (data = {}) => {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Generated on: ${genTimestamp}   |   Administrator: 9284188705 (SuperAdmin)`, centerX, 24, { align: 'center' });
+    doc.text(`Generated on: ${genTimestamp}   |   Administrator: 9284188705 (SuperAdmin)`, centerX, 28, { align: 'center', maxWidth: pageWidth - 28 });
 
-    doc.setDrawColor(29, 78, 216);
+    doc.setDrawColor(5, 150, 105);
     doc.setLineWidth(0.7);
-    doc.line(14, 27, pageWidth - 14, 27);
+    doc.line(14, 32, pageWidth - 14, 32);
 
     // 3. KPI Summary Table
     const kpiColumns = ['METRIC', 'VALUE', 'STATUS / DETAILS'];
@@ -332,10 +342,10 @@ export const exportDashboardPDF = (data = {}) => {
     autoTable(doc, {
       head: [kpiColumns],
       body: kpiRows,
-      startY: 32,
+      startY: 36,
       theme: 'grid',
       styles: { fontSize: 8.5, cellPadding: 2.2, textColor: [30, 41, 59] },
-      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+      headStyles: { fillColor: [5, 150, 105], textColor: [255, 255, 255], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       margin: { left: 14, right: 14, bottom: 28 }
     });

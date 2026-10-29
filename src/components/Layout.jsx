@@ -3,6 +3,7 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LayoutDashboard, Users, Folder, Monitor, LogOut, FileText, Sun, Moon, Settings, User, Phone, Shield, Menu, X, Activity, PieChart, Tag, ClipboardList, Radio, Building, MapPin, Cpu, Bell, TrendingUp, AlertTriangle, MessageSquare } from 'lucide-react';
 import Footer from './Footer';
+import { LOGO_LEFT_BASE64 } from '../utils/logoAssets';
 
 const Layout = () => {
   const { user, logout } = useAuth();
@@ -77,7 +78,6 @@ const Layout = () => {
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Feedbacks', href: '/feedbacks', icon: MessageSquare, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Analysis', href: '/analysis', icon: PieChart, roles: ['Admin', 'User', 'Super Admin'] },
-    { name: 'Diagnosis', href: '/diagnosis', icon: Activity, roles: ['Admin', 'User', 'Super Admin'] },
   ];
 
   return (
@@ -104,7 +104,8 @@ const Layout = () => {
             margin: '0 auto'
           }}>
             <img 
-              src="/logo_left.jpeg" 
+              src={LOGO_LEFT_BASE64 || `${import.meta.env.BASE_URL}logo_left.jpeg`} 
+              onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = LOGO_LEFT_BASE64; }} 
               alt="E2Toilet SmartBuddy Logo" 
               style={{ 
                 width: '100%', 
@@ -147,7 +148,7 @@ const Layout = () => {
                 
                 if (isOmc || isIocl) {
                   // Common hidden for both
-                  if (item.name === 'Create OMC' || item.name === 'Diagnosis') return false;
+                  if (item.name === 'Create OMC') return false;
                   // Specifically hidden for IOCL
                   if (isIocl && item.name === 'Create RO') return false;
                 }

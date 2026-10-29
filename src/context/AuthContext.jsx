@@ -4,7 +4,7 @@ import { socket, disconnectSocket } from '../hooks/useSocket';
 
 const AuthContext = createContext(null);
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Use the real backend API for all logins (Super Admin, OMC Admin, RO Manager)
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
       const response = await axios.post(`${apiUrl}/auth/login`, {
         username: cleanUser,
         mobile: cleanUser,
@@ -101,7 +101,7 @@ export const AuthProvider = ({ children }) => {
       const isNetError = error.code === 'ERR_NETWORK' || !error.response;
       return {
         success: false,
-        message: error.response?.data?.message || (isNetError ? 'Backend server शी संपर्क होत नाहीये. सर्व्हर सुरू आहे का तपासा.' : 'Invalid mobile number or password')
+        message: error.response?.data?.message || (isNetError ? 'Unable to connect to backend server. Please check if the server is running.' : 'Invalid mobile number or password')
       };
     }
   };

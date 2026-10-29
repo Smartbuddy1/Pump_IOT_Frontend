@@ -444,7 +444,7 @@ const TopRatedMachinesCard = ({
                         fontSize: '0.85rem' 
                       }}>
                         <Users size={14} color="#3b82f6" />
-                        {m.visits} <span style={{ fontWeight: 'normal', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>visits</span>
+                        {m.visits || 0} <span style={{ fontWeight: 'normal', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>visits</span>
                       </span>
                     </td>
                   </tr>

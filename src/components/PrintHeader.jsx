@@ -1,4 +1,5 @@
 import React from 'react';
+import { LOGO_LEFT_BASE64, LOGO_RIGHT_BASE64 } from '../utils/logoAssets';
 
 const PrintHeader = ({ title = 'Telemetry Report', subtitle, clientName, roName, machineName, dateRange }) => {
   const currentDate = new Date().toLocaleString('en-IN', {
@@ -11,8 +12,8 @@ const PrintHeader = ({ title = 'Telemetry Report', subtitle, clientName, roName,
     <div className="print-only" style={{ display: 'none', width: '100%', marginBottom: '20px', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
         {/* Left Side: Client / OMC Logo */}
-        <div style={{ width: '160px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-          <img src="/logo_left.jpeg" alt="Client Logo" style={{ maxHeight: '60px', maxWidth: '150px', objectFit: 'contain' }} />
+        <div style={{ width: '180px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+          <img src={LOGO_LEFT_BASE64 || `${import.meta.env.BASE_URL}logo_left.jpeg`} alt="Client Logo" style={{ maxHeight: '75px', maxWidth: '170px', objectFit: 'contain' }} />
         </div>
 
         {/* Center: Title & Details */}
@@ -35,11 +36,11 @@ const PrintHeader = ({ title = 'Telemetry Report', subtitle, clientName, roName,
         </div>
 
         {/* Right Side: SmartBuddy HD Logo */}
-        <div style={{ width: '160px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-          <img src="/logo_new.png" alt="SmartBuddy Logo" style={{ maxHeight: '60px', maxWidth: '150px', objectFit: 'contain' }} />
+        <div style={{ width: '180px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <img src={LOGO_RIGHT_BASE64 || `${import.meta.env.BASE_URL}logo_new.png`} alt="SmartBuddy Logo" style={{ maxHeight: '75px', maxWidth: '170px', objectFit: 'contain' }} />
         </div>
       </div>
-      <div style={{ borderBottom: '2.5px solid #1d4ed8' }}></div>
+      <div style={{ borderBottom: '2.5px solid #059669' }}></div>
     </div>
   );
 };

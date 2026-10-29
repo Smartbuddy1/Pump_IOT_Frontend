@@ -1,4 +1,5 @@
 import React from "react";
+import { LOGO_LEFT_BASE64, LOGO_RIGHT_BASE64 } from '../utils/logoAssets';
 
 const PrintTemplate = ({ 
   title, 
@@ -18,8 +19,8 @@ const PrintTemplate = ({
     <div className="print-header-content" style={{ display: 'flex', flexDirection: 'column', width: '100%', marginBottom: '20px', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', width: '100%' }}>
         {/* Left Side: Client Logo */}
-        <div style={{ width: '160px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-          <img src={clientLogo || "/logo_left.jpeg"} alt="Client Logo" style={{ maxHeight: '65px', maxWidth: '150px', objectFit: 'contain' }} />
+        <div style={{ width: '180px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+          <img src={clientLogo || LOGO_LEFT_BASE64 || `${import.meta.env.BASE_URL}logo_left.jpeg`} alt="Client Logo" style={{ maxHeight: '75px', maxWidth: '170px', objectFit: 'contain' }} />
         </div>
 
         {/* Center: Title & Details exactly matching HD PDF */}
@@ -45,11 +46,11 @@ const PrintTemplate = ({
         </div>
 
         {/* Right Side: SmartBuddy Modern HD Logo */}
-        <div style={{ width: '160px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-          <img src="/logo_new.png" alt="SmartBuddy Logo" style={{ maxHeight: '65px', maxWidth: '150px', objectFit: 'contain' }} />
+        <div style={{ width: '180px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <img src={LOGO_RIGHT_BASE64 || `${import.meta.env.BASE_URL}logo_new.png`} alt="SmartBuddy Logo" style={{ maxHeight: '75px', maxWidth: '170px', objectFit: 'contain' }} />
         </div>
       </div>
-      <div style={{ borderBottom: '2.5px solid #1d4ed8' }}></div>
+      <div style={{ borderBottom: '2.5px solid #059669' }}></div>
     </div>
   );
 
@@ -57,11 +58,11 @@ const PrintTemplate = ({
     <div className="print-footer-content" style={{ width: '100%', marginTop: '40px', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '25px', padding: '0 20px' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: '160px', borderTop: '1.5px solid #475569', marginBottom: '6px' }}></div>
+          <div style={{ width: '180px', borderTop: '1.5px solid #475569', marginBottom: '6px' }}></div>
           <span style={{ fontSize: '10pt', fontWeight: '700', color: '#334155' }}>System Administrator</span>
         </div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: '160px', borderTop: '1.5px solid #475569', marginBottom: '6px' }}></div>
+          <div style={{ width: '180px', borderTop: '1.5px solid #475569', marginBottom: '6px' }}></div>
           <span style={{ fontSize: '10pt', fontWeight: '700', color: '#334155' }}>Authorized Signatory</span>
         </div>
       </div>

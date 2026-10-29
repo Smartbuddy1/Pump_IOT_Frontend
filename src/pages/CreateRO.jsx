@@ -45,7 +45,10 @@ const CreateRO = () => {
         api.get('/omc'),
         api.get('/ro')
       ]);
-      if (omcRes.data.success) setOmcList(omcRes.data.data);
+      if (omcRes.data.success) {
+        const sortedOmcs = (omcRes.data.data || []).slice().sort((a, b) => String(a.name || '').trim().localeCompare(String(b.name || '').trim(), undefined, { sensitivity: 'base' }));
+        setOmcList(sortedOmcs);
+      }
       if (roRes.data.success) {
         const sorted = (roRes.data.data || []).map(r => {
           const num = parseInt(String(r.id).replace(/[^0-9]/g, ''), 10);
@@ -53,7 +56,7 @@ const CreateRO = () => {
             ...r,
             id: (!isNaN(num) && num > 0) ? num : r.id
           };
-        }).sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        }).sort((a, b) => String(a.name || '').trim().localeCompare(String(b.name || '').trim(), undefined, { sensitivity: 'base' }));
         const withDisplayIds = sorted.map((r, idx) => ({
           ...r,
           displayId: idx + 1
@@ -96,30 +99,26 @@ const CreateRO = () => {
     return { id: 1, name: 'iocl' };
   }, [isOmcAdmin, userOmcId, user, omcList]);
 
-  const filteredROs = (() => {
-    // First apply OMC filter (locked to assigned OMC for OMC Admin)
-    const baseList = ros.filter(ro => {
+  const baseList = React.useMemo(() => {
+    const list = ros.filter(ro => {
       if (isOmcAdmin && assignedOmc) {
         return String(ro.omc_id) === String(assignedOmc.id);
       }
       return filterOmcId === 'All' || String(ro.omc_id) === String(filterOmcId);
     });
+    return list.map((r, idx) => ({
+      ...r,
+      displayId: idx + 1
+    }));
+  }, [ros, isOmcAdmin, assignedOmc, filterOmcId]);
 
+  const filteredROs = (() => {
     const rawTerm = searchTerm.trim();
     if (!rawTerm) return baseList;
 
     const term = rawTerm.toLowerCase();
-    const cleanNum = term.replace(/^[#idro\s:\-_]+/i, '').trim();
+    const cleanNum = term.replace(/^(?:#|id|ro)[\s:\-_]*/i, '').trim();
     const isNumericSearch = /^\d+$/.test(cleanNum);
-
-    // If user is searching specifically by ID / number (e.g. "1", "2", "3", "#2", "id 1", "ro 2")
-    if (isNumericSearch && cleanNum.length <= 3) {
-      return baseList.filter(ro => {
-        const displayIdStr = String(ro.displayId || '');
-        const nameStr = String(ro.name || '').toLowerCase();
-        return cleanNum === displayIdStr || nameStr === term;
-      });
-    }
 
     return baseList.filter(ro => {
       const displayIdStr = String(ro.displayId || '');
@@ -129,36 +128,35 @@ const CreateRO = () => {
       const statusStr = String(ro.status || '').toLowerCase();
       const omcName = String(getOmcName(ro.omc_id) || '').toLowerCase();
 
-      // Direct visible ID match
-      if (cleanNum && cleanNum === displayIdStr) {
-        return true;
+      // 1. Exact ID match (by visible table ID, e.g. "1", "2", "ro 1", "id 1", "#1")
+      if (isNumericSearch) {
+        if (cleanNum === displayIdStr) return true;
+        if (term === `ro ${displayIdStr}` || term === `ro-${displayIdStr}` || term === `ro${displayIdStr}` || term === `#${displayIdStr}` || term === `id ${displayIdStr}` || term === `id-${displayIdStr}`) return true;
       }
-      if (term === displayIdStr) {
-        return true;
-      }
+      if (term === displayIdStr) return true;
 
-      // Check fields
+      // 2. Name, Location, OMC Name, Status match
       if (nameStr.includes(term)) return true;
       if (locStr.includes(term)) return true;
       if (omcName.includes(term)) return true;
       if (statusStr.includes(term)) return true;
 
-      // Contact match ONLY if search term has at least 4 digits
+      // 3. Contact match ONLY if search term has at least 4 digits
       if (cleanNum.length >= 4 && contactStr.includes(cleanNum)) {
         return true;
       }
 
-      // Multi-word search
+      // 4. Multi-word search (e.g. "ro 1", "divya niphad", "1 divya")
       const searchWords = term.split(/\s+/).filter(Boolean);
       if (searchWords.length > 1) {
         return searchWords.every(word => {
-          const cw = word.replace(/^[#idro\s:\-_]+/i, '').trim();
+          const cw = word.replace(/^(?:#|id|ro)[\s:\-_]*/i, '').trim();
           if (cw && cw === displayIdStr) return true;
           if (nameStr.includes(word)) return true;
           if (locStr.includes(word)) return true;
-          if (cw.length >= 4 && contactStr.includes(cw)) return true;
           if (omcName.includes(word)) return true;
           if (statusStr.includes(word)) return true;
+          if (cw.length >= 4 && contactStr.includes(cw)) return true;
           return false;
         });
       }
@@ -265,8 +263,8 @@ const CreateRO = () => {
       return;
     }
 
-    if (!formData.contact_password || !formData.contact_password.trim()) {
-      alert('Password is required. Please enter a password.');
+    if (!formData.contact_password || formData.contact_password.trim().length < 8) {
+      alert('Password must be at least 8 characters long.');
       return;
     }
 
@@ -457,8 +455,8 @@ const CreateRO = () => {
               <tr>
                 <td colSpan="7" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading ROs...</td>
               </tr>
-            ) : currentROs.length > 0 ? currentROs.map((ro, idx) => {
-              const displayId = ro.displayId || (indexOfFirstItem + idx + 1);
+            ) : currentROs.length > 0 ? currentROs.map((ro) => {
+              const displayId = ro.displayId || ro.id;
               return (
               <tr key={ro.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-primary)', fontWeight: '600' }}>{displayId}</td>
@@ -683,7 +681,7 @@ const CreateRO = () => {
                         type={showFormPassword ? "text" : "password"} 
                         value={formData.contact_password || ''} 
                         onChange={(e) => setFormData({...formData, contact_password: e.target.value})} 
-                        placeholder="Enter Password" 
+                        placeholder="Enter Password (Min 8 characters)" 
                         style={{ 
                           width: '100%', 
                           padding: '0.75rem 1rem 0.75rem 2.5rem', 
@@ -694,6 +692,11 @@ const CreateRO = () => {
                         }} 
                       />
                     </div>
+                    {formData.contact_password && formData.contact_password.trim().length > 0 && formData.contact_password.trim().length < 8 && (
+                      <span style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.35rem', display: 'block', fontWeight: '500' }}>
+                        Password must be at least 8 characters (current: {formData.contact_password.trim().length})
+                      </span>
+                    )}
                   </div>
                 </div>
                 
@@ -701,17 +704,17 @@ const CreateRO = () => {
                   <button onClick={closeModal} style={{ padding: '0.6rem 1.5rem', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', borderRadius: '999px', cursor: 'pointer', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.9rem' }}>Cancel</button>
                   <button 
                     onClick={handleSave} 
-                    disabled={Boolean(isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || !formData.contact_password?.trim() || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id))}
+                    disabled={Boolean(isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8) || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id))}
                     style={{ 
                       padding: '0.6rem 1.5rem', 
                       border: 'none', 
-                      background: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || !formData.contact_password?.trim() || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id)) ? '#9ca3af' : '#6366f1', 
+                      background: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8) || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id)) ? '#9ca3af' : '#6366f1', 
                       color: '#ffffff', 
                       borderRadius: '999px', 
-                      cursor: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || !formData.contact_password?.trim() || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id)) ? 'not-allowed' : 'pointer', 
+                      cursor: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8) || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id)) ? 'not-allowed' : 'pointer', 
                       fontWeight: '600', 
                       fontSize: '0.9rem',
-                      opacity: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || !formData.contact_password?.trim() || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id)) ? 0.6 : 1
+                      opacity: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8) || !((isOmcAdmin && assignedOmc) ? assignedOmc.id : formData.omc_id)) ? 0.6 : 1
                     }}
                   >
                     Save

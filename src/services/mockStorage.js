@@ -44,11 +44,11 @@ export const notifyDataUpdated = (resource, method, data = {}) => {
 };
 
 export const defaultMachines = [
-  { id: 1, db_id: 1, name: 'SBP2T903', ro_id: 1, type: 'Dispenser', status: 'ACTIVE', health_score: 85, live_temp: '45', live_water: 'Normal', live_humidity: '55', live_odour: '30', live_nh3: '17', live_h2s: '11', visits: 30, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Disabled', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
-  { id: 2, db_id: 2, name: 'SBP2T902', ro_id: 1, type: 'Dispenser', status: 'ACTIVE', health_score: 82, live_temp: '28', live_water: 'Low', live_humidity: '50', live_odour: '35', live_nh3: '19', live_h2s: '12', visits: 30, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
-  { id: 3, db_id: 3, name: 'SBP2T901', ro_id: 1, type: 'Dispenser', status: 'ACTIVE', health_score: 79, live_temp: '32', live_water: 'Low', live_humidity: '52', live_odour: '78', live_nh3: '43', live_h2s: '27', visits: 30, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
-  { id: 4, db_id: 4, name: 'SBP2T201', ro_id: 4, type: 'Dispenser', status: 'ACTIVE', health_score: 91, live_temp: '18', live_water: 'Normal', live_humidity: '30', live_odour: '52', live_nh3: '29', live_h2s: '18', visits: 30, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
-  { id: 5, db_id: 5, name: 'SBP2T202', ro_id: 4, type: 'Dispenser', status: 'ACTIVE', health_score: 96, live_temp: '27', live_water: 'Normal', live_humidity: '50', live_odour: '30', live_nh3: '17', live_h2s: '11', visits: 30, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() }
+  { id: 1, db_id: 1, name: 'SBP2T903', ro_id: 1, type: 'Dispenser', status: 'Inactive', health_score: 85, live_temp: '45', live_water: 'Normal', live_humidity: '55', live_odour: '30', live_nh3: '17', live_h2s: '11', visits: 0, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Disabled', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
+  { id: 2, db_id: 2, name: 'SBP2T902', ro_id: 1, type: 'Dispenser', status: 'Inactive', health_score: 82, live_temp: '28', live_water: 'Low', live_humidity: '50', live_odour: '35', live_nh3: '19', live_h2s: '12', visits: 0, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
+  { id: 3, db_id: 3, name: 'SBP2T901', ro_id: 1, type: 'Dispenser', status: 'Inactive', health_score: 79, live_temp: '32', live_water: 'Low', live_humidity: '52', live_odour: '78', live_nh3: '43', live_h2s: '27', visits: 0, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
+  { id: 4, db_id: 4, name: 'SBP2T201', ro_id: 4, type: 'Dispenser', status: 'Inactive', health_score: 91, live_temp: '18', live_water: 'Normal', live_humidity: '30', live_odour: '52', live_nh3: '29', live_h2s: '18', visits: 0, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() },
+  { id: 5, db_id: 5, name: 'SBP2T202', ro_id: 4, type: 'Dispenser', status: 'Inactive', health_score: 96, live_temp: '27', live_water: 'Normal', live_humidity: '50', live_odour: '30', live_nh3: '17', live_h2s: '11', visits: 0, tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20', created_at: new Date().toISOString() }
 ];
 
 export const defaultAlerts = [
@@ -153,14 +153,14 @@ export const sanitizeMachinesList = (machines = []) => {
       }
     }
 
-    let status = m.status;
-    if (!status || status === 'Running' || status === 'Online') {
-      status = 'ACTIVE';
+    let status = m.status || 'Inactive';
+    if (status === 'Running' || status === 'Online') {
+      status = 'Active';
     }
 
-    let visits = Number(m.visits);
-    if (!visits || isNaN(visits) || visits <= 0) {
-      visits = 30;
+    let visits = Number(m.visits !== undefined && m.visits !== null ? m.visits : (m.usage || 0));
+    if (isNaN(visits) || visits < 0) {
+      visits = 0;
     }
 
     const matchedRo = currentROs.find(r => Number(r.id) === Number(roId));
@@ -740,7 +740,7 @@ export const handleMockRequest = (url, method, body = {}) => {
 
   // Machines
   if (resource === 'machines' || resource === 'machine') {
-    const MIGRATION_KEY = 'machines_v18_water_low_only';
+    const MIGRATION_KEY = 'machines_v19_zero_visits_default_inactive';
     if (typeof window !== 'undefined' && !localStorage.getItem(MIGRATION_KEY)) {
       let currentRaw = getStored('machines_data', defaultMachines);
       let seeded = currentRaw.map(m => {
@@ -1083,10 +1083,10 @@ export const handleMockRequest = (url, method, body = {}) => {
           dayWaterAlerts += 1;
         }
 
-        const baseV = Number(m.visits) || 30;
+        const baseV = Number(m.visits) || Number(m.usage) || 0;
         const dayVariance = [0, -3, -5, -4, -7, +8, +5];
         const visitVar = dayVariance[dayOffset % dayVariance.length];
-        dayVisits += Math.max(15, baseV + visitVar);
+        dayVisits += baseV > 0 ? Math.max(0, baseV + visitVar) : 0;
       });
 
       const count = targetMachines.length || 1;
