@@ -76,8 +76,8 @@ const Layout = () => {
     { name: 'Machines', href: '/machine', icon: Cpu, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Alerts', href: '/alerts', icon: Bell, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['Admin', 'User', 'Super Admin'] },
-    { name: 'Feedbacks', href: '/feedbacks', icon: MessageSquare, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Analysis', href: '/analysis', icon: PieChart, roles: ['Admin', 'User', 'Super Admin'] },
+    { name: 'Feedbacks', href: '/feedbacks', icon: MessageSquare, roles: ['Admin', 'User', 'Super Admin'] },
   ];
 
   return (
