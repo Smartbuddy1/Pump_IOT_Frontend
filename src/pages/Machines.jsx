@@ -427,6 +427,8 @@ const Machines = () => {
   const isRoUser = !isOmcAdmin && !isSuperAdmin && (
                    user?.role === 'RO Manager' || 
                    user?.role === 'RO User' ||
+                   user?.role === 'RO' ||
+                   Boolean(user?.ro_id || user?.roId) ||
                    String(user?.role || '').toLowerCase().includes('ro') || 
                    String(user?.role || '').toLowerCase().includes('iocl') || 
                    String(user?.name || '').toLowerCase().includes('iocl')
@@ -434,12 +436,13 @@ const Machines = () => {
   const userOmcId = user?.omcId || user?.omc_id;
 
   const [remoteDuplicateId, setRemoteDuplicateId] = useState(null);
+  const [machinePrefix, setMachinePrefix] = useState('SBP2T');
 
   // Real-time duplicate ID check across current scoped machines
   const localDuplicate = React.useMemo(() => {
     if (!formData.id) return false;
     const cleanCandidate = String(formData.id).trim().toLowerCase();
-    if (cleanCandidate === 'sbp2t' || !cleanCandidate) return false;
+    if (cleanCandidate === 'sbp2t' || cleanCandidate === 'sbe' || !cleanCandidate) return false;
     return machines.some(m => {
       if (modalType === 'edit') {
         const isSelf = String(m.db_id || m.id) === String(selectedItem?.db_id || selectedItem?.id);
@@ -456,12 +459,12 @@ const Machines = () => {
       setRemoteDuplicateId(null);
       return;
     }
-    const cleanSuffix = String(formData.id).replace(/^SBP2T/i, '').trim();
+    const cleanSuffix = String(formData.id).replace(/^(SBP2T|SBE)/i, '').trim();
     if (!cleanSuffix) {
       setRemoteDuplicateId(null);
       return;
     }
-    const fullCandidate = `SBP2T${cleanSuffix}`;
+    const fullCandidate = String(formData.id).trim();
 
     if (localDuplicate) {
       setRemoteDuplicateId(fullCandidate);
@@ -708,6 +711,12 @@ const Machines = () => {
     setShowViewWifiPassword(false);
     setRemoteDuplicateId(null);
     if (type === 'edit' && item) {
+      const nameUpper = String(item.name || item.id || '').toUpperCase();
+      if (nameUpper.startsWith('SBE')) {
+        setMachinePrefix('SBE');
+      } else {
+        setMachinePrefix('SBP2T');
+      }
       const matchedRo = getRo(item.roId || item.ro_id);
       const tempMediumVal = String(item.tempLimitMedium || '30');
       const humMediumVal = String(item.humidityLimitMedium || '65');
@@ -839,6 +848,7 @@ const Machines = () => {
     setShowWifiPassword(false);
     setShowViewWifiPassword(false);
     setRemoteDuplicateId(null);
+    setMachinePrefix('SBP2T');
     setFormData({ id: '', status: 'ACTIVE', roId: '', toiletId: '', toiletType: '', installDate: '', wifiName: '', wifiPassword: '', liveTemp: '28', liveHumidity: '50', liveWater: 'Normal', liveOdour: '40', liveNh3: '22', liveH2s: '14', tempLimitLow: '20', tempLimitMedium: '30', tempLimitDanger: '41', humidityLimitLow: '35', humidityLimitMedium: '70', humidityLimitDanger: '76', waterLevelTrigger: 'Low', waterLimitLow: 'Low', odourLimitLow: '40', odourLimitMedium: '60', odourLimitDanger: '71', nh3LimitLow: '25', nh3LimitDanger: '50', h2sLimitLow: '10', h2sLimitDanger: '20' });
   };
 
@@ -859,12 +869,16 @@ const Machines = () => {
       }
     }
 
-    const cleanSuffix = String(formData.id || '').replace(/^SBP2T/i, '').trim();
+    let cleanId = String(formData.id || '').trim();
+    const cleanSuffix = cleanId.replace(/^(SBP2T|SBE)/i, '').trim();
     if (!cleanSuffix) {
-      alert('Please enter Machine ID (after SBP2T)');
+      alert(`Please enter Machine ID (after ${machinePrefix})`);
       return;
     }
-    formData.id = `SBP2T${cleanSuffix}`;
+    if (!cleanId.toUpperCase().startsWith('SBP2T') && !cleanId.toUpperCase().startsWith('SBE')) {
+      cleanId = `${machinePrefix}${cleanSuffix}`;
+    }
+    formData.id = cleanId;
 
     const candidateId = formData.id.trim();
     const isDuplicate = machines.some(m => {
@@ -1217,12 +1231,22 @@ const Machines = () => {
   };
 
   useEffect(() => {
+    if (isRoUser && (modalType === 'add' || modalType === 'edit' || modalType === 'delete')) {
+      setModalType(null);
+      setOpenedFromDashboard(false);
+      setSelectedItem(null);
+    }
+  }, [isRoUser, modalType]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('action') === 'add') {
-      openModal('add');
+      if (!isRoUser) {
+        openModal('add');
+      }
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [machines]);
+  }, [machines, isRoUser]);
 
   // Helper to format Date & Time consistently
   const formatDateDisplay = (dateVal, timeVal = '10:30 AM') => {
@@ -1678,32 +1702,55 @@ const Machines = () => {
                       Machine ID <span style={{ color: '#ef4444' }}>*</span>
                     </label>
                     <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                      <span style={{ 
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '0 0.85rem', 
-                        background: 'var(--hover-bg, #f1f5f9)', 
-                        border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
-                        borderRight: 'none', 
-                        borderRadius: '8px 0 0 8px', 
-                        fontWeight: '700', 
-                        color: isDuplicateId ? '#ef4444' : 'var(--text-primary)',
-                        fontSize: '0.9rem',
-                        userSelect: 'none'
-                      }}>
-                        SBP2T
-                      </span>
-                      <input 
-                        type="text" 
-                        value={formData.id ? String(formData.id).replace(/^SBP2T/i, '') : ''} 
+                      <select
+                        value={machinePrefix}
                         onChange={(e) => {
-                          const inputSuffix = e.target.value.replace(/^SBP2T/i, '').trim();
+                          const newPrefix = e.target.value;
+                          setMachinePrefix(newPrefix);
+                          const curSuffix = String(formData.id || '').replace(/^(SBP2T|SBE)/i, '').trim();
                           setFormData(prev => ({
                             ...prev,
-                            id: inputSuffix ? `SBP2T${inputSuffix}` : ''
+                            id: curSuffix ? `${newPrefix}${curSuffix}` : ''
                           }));
                         }}
-                        placeholder="Enter ID (e.g. 1404)"
+                        style={{ 
+                          padding: '0 0.65rem', 
+                          background: 'var(--hover-bg, #f1f5f9)', 
+                          border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
+                          borderRight: 'none', 
+                          borderRadius: '8px 0 0 8px', 
+                          fontWeight: '700', 
+                          color: isDuplicateId ? '#ef4444' : 'var(--text-primary)',
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="SBP2T">SBP2T</option>
+                        <option value="SBE">SBE</option>
+                      </select>
+                      <input 
+                        type="text" 
+                        value={formData.id ? String(formData.id).replace(/^(SBP2T|SBE)/i, '') : ''} 
+                        onChange={(e) => {
+                          let val = e.target.value.trim();
+                          let pfx = machinePrefix;
+                          if (val.toUpperCase().startsWith('SBE')) {
+                            pfx = 'SBE';
+                            setMachinePrefix('SBE');
+                            val = val.substring(3);
+                          } else if (val.toUpperCase().startsWith('SBP2T')) {
+                            pfx = 'SBP2T';
+                            setMachinePrefix('SBP2T');
+                            val = val.substring(5);
+                          }
+                          const inputSuffix = val.replace(/^(SBP2T|SBE)/i, '').trim();
+                          setFormData(prev => ({
+                            ...prev,
+                            id: inputSuffix ? `${pfx}${inputSuffix}` : ''
+                          }));
+                        }}
+                        placeholder="Enter ID (e.g. 101 or 20001)"
                         style={{ 
                           flex: 1, 
                           height: '42px',
@@ -1725,7 +1772,7 @@ const Machines = () => {
                       </span>
                     ) : (
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                        Prefix "SBP2T" followed by your custom ID
+                        Prefix (SBP2T / SBE) followed by custom ID
                       </span>
                     )}
                   </div>
