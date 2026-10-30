@@ -72,15 +72,30 @@ const Readings = () => {
 
   // Socket.IO real-time listener for incoming 30s PCB telemetry packets
   useEffect(() => {
+    let lastKey = '';
     const handleNewTelemetry = (data) => {
       if (!data || !data.machineId) return;
 
+      const dedupeKey = `${data.machineId}_${data.temperature}_${data.humidity}_${data.odour}_${data.nh3}_${data.h2s}`;
+      if (dedupeKey === lastKey) return;
+      lastKey = dedupeKey;
+      setTimeout(() => { if (lastKey === dedupeKey) lastKey = ''; }, 3000);
+
       const newId = `live-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const cleanTemp = parseFloat(String(data.temperature || '').replace(/[^0-9.-]/g, '')) || 31;
-      const cleanHum = parseFloat(String(data.humidity || '').replace(/[^0-9.-]/g, '')) || 61;
-      const cleanVoc = parseFloat(String(data.odour || '').replace(/[^0-9.-]/g, '')) || 1153;
-      const cleanNh3 = parseFloat(String(data.nh3 || '').replace(/[^0-9.-]/g, '')) || 614;
-      const cleanH2s = parseFloat(String(data.h2s || '').replace(/[^0-9.-]/g, '')) || 1266;
+      const parsedTemp = parseFloat(String(data.temperature ?? '').replace(/[^0-9.-]/g, ''));
+      const cleanTemp = !isNaN(parsedTemp) ? parsedTemp : 31;
+
+      const parsedHum = parseFloat(String(data.humidity ?? '').replace(/[^0-9.-]/g, ''));
+      const cleanHum = !isNaN(parsedHum) ? parsedHum : 61;
+
+      const parsedVoc = parseFloat(String(data.odour ?? data.vocGas ?? '').replace(/[^0-9.-]/g, ''));
+      const cleanVoc = !isNaN(parsedVoc) ? parsedVoc : 1153;
+
+      const parsedNh3 = parseFloat(String(data.nh3 ?? '').replace(/[^0-9.-]/g, ''));
+      const cleanNh3 = !isNaN(parsedNh3) ? parsedNh3 : 614;
+
+      const parsedH2s = parseFloat(String(data.h2s ?? '').replace(/[^0-9.-]/g, ''));
+      const cleanH2s = !isNaN(parsedH2s) ? parsedH2s : 1266;
 
       const newEntry = {
         id: newId,
@@ -793,3 +808,4 @@ const Readings = () => {
 };
 
 export default Readings;
+
