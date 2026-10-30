@@ -238,7 +238,49 @@ const Machines = () => {
     fetchMachines();
     // Auto-refresh telemetry every 10 seconds
     const interval = setInterval(fetchMachines, 10000);
-    return () => clearInterval(interval);
+
+    const handleLiveTelemetry = (data) => {
+      if (!data || !data.machineId) return;
+      const targetId = String(data.machineId).toLowerCase().trim();
+      const normTarget = targetId.replace(/o/g, '0');
+
+      setMachines(prev => (Array.isArray(prev) ? prev : []).map(m => {
+        const mName = String(m.name || m.id || '').toLowerCase().trim();
+        const normMName = mName.replace(/o/g, '0');
+        if (mName === targetId || normMName === normTarget) {
+          const rawO = data.odour !== undefined ? data.odour : m.liveOdour;
+          const cleanO = String(rawO || '').replace(/[^0-9.-]/g, '');
+          const odourStr = cleanO ? `${cleanO} PPM` : 'Normal';
+
+          const rawNh3 = data.nh3 !== undefined ? data.nh3 : m.liveNh3;
+          const cleanNh3 = String(rawNh3 || '').replace(/[^0-9.-]/g, '');
+          const nh3Str = cleanNh3 ? `${cleanNh3} PPM` : '0 PPM';
+
+          const rawH2s = data.h2s !== undefined ? data.h2s : m.liveH2s;
+          const cleanH2s = String(rawH2s || '').replace(/[^0-9.-]/g, '');
+          const h2sStr = cleanH2s ? `${cleanH2s} PPM` : '0 PPM';
+
+          return {
+            ...m,
+            liveTemp: data.temperature || m.liveTemp,
+            liveWater: data.water || m.liveWater,
+            liveHumidity: data.humidity || m.liveHumidity,
+            liveOdour: odourStr,
+            liveNh3: nh3Str,
+            liveH2s: h2sStr,
+            status: 'Active'
+          };
+        }
+        return m;
+      }));
+    };
+
+    socket.on('live_data_update', handleLiveTelemetry);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('live_data_update', handleLiveTelemetry);
+    };
   }, []);
 
   // Helper to find RO by numeric ID, db_id, string ID, or name
@@ -663,23 +705,34 @@ const Machines = () => {
     const handleLiveTelemetry = (data) => {
       if (!data || !data.machineId) return;
       const target = String(data.machineId).trim().toLowerCase();
-      setMachines(prev => prev.map(m => {
-        const mId = String(m.id || '').trim().toLowerCase();
-        const mName = String(m.name || '').trim().toLowerCase();
-        if (mId === target || mName === target || mId.replace(/\D/g, '') === target.replace(/\D/g, '')) {
-          return {
-            ...m,
-            status: 'Active',
-            liveTemp: data.temperature || m.liveTemp,
-            liveWater: data.water || m.liveWater,
-            liveHumidity: data.humidity || m.liveHumidity,
-            liveOdour: data.odour || m.liveOdour,
-            liveNh3: data.nh3 !== undefined ? `${data.nh3} PPM` : m.liveNh3,
-            liveH2s: data.h2s !== undefined ? `${data.h2s} PPM` : m.liveH2s
-          };
+      setMachines(prev => {
+        const exists = prev.some(m => {
+          const mId = String(m.id || '').trim().toLowerCase();
+          const mName = String(m.name || '').trim().toLowerCase();
+          return mId === target || mName === target;
+        });
+        if (!exists) {
+          fetchData();
+          return prev;
         }
-        return m;
-      }));
+        return prev.map(m => {
+          const mId = String(m.id || '').trim().toLowerCase();
+          const mName = String(m.name || '').trim().toLowerCase();
+          if (mId === target || mName === target || (/^\d+$/.test(target) && (mId.endsWith(target) || mName.endsWith(target)))) {
+            return {
+              ...m,
+              status: 'Active',
+              liveTemp: data.temperature || m.liveTemp,
+              liveWater: data.water || m.liveWater,
+              liveHumidity: data.humidity || m.liveHumidity,
+              liveOdour: data.odour || m.liveOdour,
+              liveNh3: data.nh3 !== undefined ? `${data.nh3} PPM` : m.liveNh3,
+              liveH2s: data.h2s !== undefined ? `${data.h2s} PPM` : m.liveH2s
+            };
+          }
+          return m;
+        });
+      });
     };
 
     socket.on('machine_status_update', handleStatusUpdate);
@@ -2473,7 +2526,7 @@ const Machines = () => {
                     </div>
 
                     <div style={{ padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--surface-bg)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', fontWeight: '500' }}>Live Odour</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', fontWeight: '500' }}>Live VOC / Odour</div>
                       <div style={{ fontSize: '1rem', fontWeight: '700', color: '#10b981' }}>
                         {String(selectedItem.liveOdour || '').includes('PPM') ? selectedItem.liveOdour : (String(selectedItem.liveOdour).toLowerCase() === 'normal' ? 'Normal' : `${selectedItem.liveOdour || '40'} PPM`)}
                       </div>

@@ -134,7 +134,9 @@ const IOCLDashboard = () => {
     const handleLiveTelemetry = (data) => {
       if (!data || !data.machineId) return;
       setMachinesList(prev => (Array.isArray(prev) ? prev : []).map(m => {
-        if (m.name?.toLowerCase() === String(data.machineId).toLowerCase()) {
+        const mName = String(m.name || m.id || '').toLowerCase().trim();
+        const targetId = String(data.machineId || '').toLowerCase().trim();
+        if (mName === targetId || mName.replace(/o/g, '0') === targetId.replace(/o/g, '0')) {
           return {
             ...m,
             live_temp: data.temperature || m.live_temp,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Building, MapPin, Cpu, Bell, Activity, Droplet, Fuel, 
+import {
+  Building, MapPin, Cpu, Bell, Activity, Droplet, Fuel,
   AlertTriangle, CheckCircle, TrendingUp, BarChart3, Wind, Power, ArrowRight, Users, WifiOff, Wrench,
   Droplets, Thermometer, MessageSquare
 } from 'lucide-react';
@@ -8,7 +8,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import OMCDashboard from './OMCDashboard';
 import IOCLDashboard from './IOCLDashboard';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   LineChart, Line, AreaChart, Area, PieChart as RechartsPieChart, Pie, Cell
 } from 'recharts';
@@ -41,7 +41,7 @@ const SuperAdminDashboard = () => {
     { name: 'Odour', value: 0 },
   ]);
   const [recentAlerts, setRecentAlerts] = useState([]);
-  
+
   const { socket } = useSocket();
 
   useEffect(() => {
@@ -64,13 +64,13 @@ const SuperAdminDashboard = () => {
         const todayDateStr = new Date().toDateString();
         const todayFbCount = Array.isArray(allFeedbacks)
           ? allFeedbacks.filter(fb => {
-              if (!fb) return false;
-              const dt = new Date(fb.created_at || fb.createdAt || fb.date);
-              return !isNaN(dt.getTime()) && dt.toDateString() === todayDateStr;
-            }).length
+            if (!fb) return false;
+            const dt = new Date(fb.created_at || fb.createdAt || fb.date);
+            return !isNaN(dt.getTime()) && dt.toDateString() === todayDateStr;
+          }).length
           : 0;
         setTodayFeedbacksCount(todayFbCount);
-        
+
         setOmcsCount(savedOMCs.length);
         setRosCount(savedROs.length);
         setMachinesCount(savedMachines.length);
@@ -91,7 +91,7 @@ const SuperAdminDashboard = () => {
         }).length;
         setActiveMachinesCount(activeCount);
         setInactiveMachinesCount(savedMachines.length - activeCount);
-        
+
         const unassigned = savedMachines.filter(m => !m.ro_id).length;
         setUnassignedCount(unassigned);
 
@@ -100,21 +100,21 @@ const SuperAdminDashboard = () => {
           let totalTemp = 0;
           let totalHumidity = 0;
           let totalOdourScore = 0;
-          
+
           savedMachines.forEach(m => {
-             const cleanW = String(m.live_water || '').replace('%', '').trim().toLowerCase();
-             const isLow = cleanW === 'low' || (parseInt(cleanW, 10) <= 20 && !isNaN(parseInt(cleanW, 10)));
-             totalWater += isLow ? 15 : 100;
-             totalTemp += parseInt(m.live_temp) || 0;
-             totalHumidity += parseInt(m.live_humidity) || 0;
-             
-             if (m.live_odour === 'Normal') totalOdourScore += 100;
-             else if (m.live_odour === 'Low') totalOdourScore += 75;
-             else if (m.live_odour === 'Medium') totalOdourScore += 40;
-             else if (m.live_odour === 'Danger') totalOdourScore += 10;
-             else totalOdourScore += 100; // Default or parsed num
+            const cleanW = String(m.live_water || '').replace('%', '').trim().toLowerCase();
+            const isLow = cleanW === 'low' || (parseInt(cleanW, 10) <= 20 && !isNaN(parseInt(cleanW, 10)));
+            totalWater += isLow ? 15 : 100;
+            totalTemp += parseInt(m.live_temp) || 0;
+            totalHumidity += parseInt(m.live_humidity) || 0;
+
+            if (m.live_odour === 'Normal') totalOdourScore += 100;
+            else if (m.live_odour === 'Low') totalOdourScore += 75;
+            else if (m.live_odour === 'Medium') totalOdourScore += 40;
+            else if (m.live_odour === 'Danger') totalOdourScore += 10;
+            else totalOdourScore += 100; // Default or parsed num
           });
-          
+
           const count = savedMachines.length;
           setSensorHealthData([
             { name: 'Water Level', value: Math.round(totalWater / count) },
@@ -123,7 +123,7 @@ const SuperAdminDashboard = () => {
             { name: 'Odour', value: Math.round(totalOdourScore / count) },
           ]);
         }
-        
+
         const rawAlerts = Array.isArray(alertsRes.data?.data)
           ? alertsRes.data.data
           : (Array.isArray(alertsRes.data) ? alertsRes.data : []);
@@ -142,7 +142,7 @@ const SuperAdminDashboard = () => {
     };
 
     fetchData();
-    
+
     const handleDataChanged = () => {
       fetchData();
     };
@@ -156,7 +156,9 @@ const SuperAdminDashboard = () => {
     const handleLiveTelemetry = (data) => {
       if (!data || !data.machineId) return;
       setMachinesList(prev => (Array.isArray(prev) ? prev : []).map(m => {
-        if (m.name?.toLowerCase() === String(data.machineId).toLowerCase()) {
+        const mName = String(m.name || m.id || '').toLowerCase().trim();
+        const targetId = String(data.machineId || '').toLowerCase().trim();
+        if (mName === targetId || mName.replace(/o/g, '0') === targetId.replace(/o/g, '0')) {
           return {
             ...m,
             live_temp: data.temperature || m.live_temp,
@@ -256,29 +258,29 @@ const SuperAdminDashboard = () => {
   ].filter(item => item.value > 0);
 
   const statusSummaryBoxes = [
-    { 
-      name: 'Active', 
-      value: activeMachinesCount, 
-      color: '#10b981', 
-      bg: 'rgba(16, 185, 129, 0.1)', 
+    {
+      name: 'Active',
+      value: activeMachinesCount,
+      color: '#10b981',
+      bg: 'rgba(16, 185, 129, 0.1)',
       border: 'rgba(16, 185, 129, 0.25)',
-      link: '/machine?status=ACTIVE' 
+      link: '/machine?status=ACTIVE'
     },
-    { 
-      name: 'Inactive', 
-      value: offlineCount, 
-      color: '#ef4444', 
-      bg: 'rgba(239, 68, 68, 0.1)', 
+    {
+      name: 'Inactive',
+      value: offlineCount,
+      color: '#ef4444',
+      bg: 'rgba(239, 68, 68, 0.1)',
       border: 'rgba(239, 68, 68, 0.25)',
-      link: '/machine?status=INACTIVE' 
+      link: '/machine?status=INACTIVE'
     },
-    { 
-      name: 'Water Alert', 
-      value: waterLowCount, 
-      color: '#0284c7', 
-      bg: 'rgba(2, 132, 199, 0.1)', 
-      border: 'rgba(2, 132, 199, 0.25)', 
-      link: '/alerts' 
+    {
+      name: 'Water Alert',
+      value: waterLowCount,
+      color: '#0284c7',
+      bg: 'rgba(2, 132, 199, 0.1)',
+      border: 'rgba(2, 132, 199, 0.25)',
+      link: '/alerts'
     },
   ];
 
@@ -317,11 +319,11 @@ const SuperAdminDashboard = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         {stats.map((stat, idx) => (
           <Link to={stat.link} key={idx} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div style={{ 
-              background: 'var(--surface-bg)', 
-              borderRadius: '12px', 
-              padding: '1.5rem', 
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)', 
+            <div style={{
+              background: 'var(--surface-bg)',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
               border: '1px solid var(--border-color)',
               cursor: 'pointer',
               display: 'flex',
@@ -333,27 +335,27 @@ const SuperAdminDashboard = () => {
               <div>
                 <h3 style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>{stat.title}</h3>
                 <p style={{ fontSize: '2rem', fontWeight: '700', margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>{stat.value}</p>
-                <div style={{ 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: '0.25rem', 
-                  padding: '0.2rem 0.5rem', 
-                  borderRadius: '999px', 
-                  background: stat.badgeBg, 
-                  color: stat.badgeColor, 
-                  fontSize: '0.75rem', 
-                  fontWeight: '700' 
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: '999px',
+                  background: stat.badgeBg,
+                  color: stat.badgeColor,
+                  fontSize: '0.75rem',
+                  fontWeight: '700'
                 }}>
                   <TrendingUp size={12} /> {stat.badgeText}
                 </div>
               </div>
-              <div style={{ 
-                width: '56px', 
-                height: '56px', 
-                borderRadius: '12px', 
-                background: stat.color, 
-                display: 'flex', 
-                alignItems: 'center', 
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '12px',
+                background: stat.color,
+                display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ffffff'
               }}>
@@ -370,11 +372,11 @@ const SuperAdminDashboard = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
           {quickActions.map((action, idx) => (
             <Link to={action.link} key={idx} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ 
-                background: 'var(--surface-bg)', 
-                borderRadius: '12px', 
-                padding: '1.25rem 1.5rem', 
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03)', 
+              <div style={{
+                background: 'var(--surface-bg)',
+                borderRadius: '12px',
+                padding: '1.25rem 1.5rem',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03)',
                 border: '1px solid var(--border-color)',
                 cursor: 'pointer',
                 display: 'flex',
@@ -383,13 +385,13 @@ const SuperAdminDashboard = () => {
                 minHeight: '90px',
                 transition: 'transform 0.2s, box-shadow 0.2s'
               }} className="hover-lift">
-                <div style={{ 
-                  width: '52px', 
-                  height: '52px', 
-                  borderRadius: '12px', 
-                  background: action.color, 
-                  display: 'flex', 
-                  alignItems: 'center', 
+                <div style={{
+                  width: '52px',
+                  height: '52px',
+                  borderRadius: '12px',
+                  background: action.color,
+                  display: 'flex',
+                  alignItems: 'center',
                   justifyContent: 'center',
                   color: '#ffffff',
                   flexShrink: 0
@@ -411,7 +413,7 @@ const SuperAdminDashboard = () => {
 
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-        
+
         {/* Daily Footfall Trends */}
         <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: '350px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
@@ -430,7 +432,7 @@ const SuperAdminDashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
-                <RechartsTooltip 
+                <RechartsTooltip
                   cursor={{ fill: 'rgba(0,0,0,0.04)' }}
                   contentStyle={{ backgroundColor: 'var(--surface-bg)', borderRadius: '8px', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                   itemStyle={{ color: '#3b82f6', fontWeight: 'bold' }}
@@ -452,7 +454,7 @@ const SuperAdminDashboard = () => {
             </div>
             <Link to="/machine" style={{ fontSize: '0.875rem', color: 'var(--primary-color)', fontWeight: '500', textDecoration: 'none' }}>View All</Link>
           </div>
-          
+
           <div style={{ height: '220px', width: '100%', position: 'relative', marginBottom: '1rem' }}>
             <ResponsiveContainer width="100%" height="100%">
               <RechartsPieChart>
@@ -464,7 +466,7 @@ const SuperAdminDashboard = () => {
                 <RechartsTooltip contentStyle={{ borderRadius: '8px', background: 'var(--surface-bg)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
               </RechartsPieChart>
             </ResponsiveContainer>
-            
+
             {/* Center Text */}
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
               <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-primary)', lineHeight: '1' }}>{machinesCount}</div>
@@ -478,9 +480,9 @@ const SuperAdminDashboard = () => {
               <Link
                 key={idx}
                 to={item.link}
-                style={{ 
+                style={{
                   textDecoration: 'none',
-                  background: item.bg, 
+                  background: item.bg,
                   border: `1px solid ${item.border}`,
                   borderRadius: '12px',
                   padding: '0.85rem 0.5rem',
@@ -506,7 +508,7 @@ const SuperAdminDashboard = () => {
       </div>
 
       {/* Top 10 High Rated Clean Machines */}
-      <TopRatedMachinesCard 
+      <TopRatedMachinesCard
         machines={machinesList}
         ros={rosList}
         omcs={omcsList}
@@ -519,9 +521,9 @@ const SuperAdminDashboard = () => {
       <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ 
-              width: '40px', height: '40px', borderRadius: '10px', 
-              background: activeAlertsCount > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', 
+            <div style={{
+              width: '40px', height: '40px', borderRadius: '10px',
+              background: activeAlertsCount > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: activeAlertsCount > 0 ? '#ef4444' : '#10b981'
             }}>
@@ -536,9 +538,9 @@ const SuperAdminDashboard = () => {
               </p>
             </div>
           </div>
-          <Link 
-            to="/alerts" 
-            style={{ 
+          <Link
+            to="/alerts"
+            style={{
               display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
               fontSize: '0.875rem', color: '#3b82f6', fontWeight: '600', textDecoration: 'none',
               padding: '0.5rem 1rem', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.08)'
@@ -573,24 +575,24 @@ const SuperAdminDashboard = () => {
                   const isTemp = alert.type === 'Temperature';
                   const isOdour = alert.type === 'Odour';
                   const typeIcon = isWater ? <Droplets size={16} color="#3b82f6" /> :
-                                   isTemp ? <Thermometer size={16} color="#f97316" /> :
-                                   isOdour ? <Wind size={16} color="#8b5cf6" /> :
-                                   <AlertTriangle size={16} color="#ef4444" />;
+                    isTemp ? <Thermometer size={16} color="#f97316" /> :
+                      isOdour ? <Wind size={16} color="#8b5cf6" /> :
+                        <AlertTriangle size={16} color="#ef4444" />;
 
                   const severityColor = alert.severity === 'Critical' || alert.severity === 'High' ? '#ef4444' :
-                                        alert.severity === 'Medium' ? '#f59e0b' : '#3b82f6';
+                    alert.severity === 'Medium' ? '#f59e0b' : '#3b82f6';
 
                   const formatAlertTime = (timestamp) => {
                     if (!timestamp) return '--';
                     const d = new Date(timestamp);
                     if (isNaN(d.getTime())) return timestamp;
-                    return d.toLocaleString('en-GB', { 
-                      day: '2-digit', 
-                      month: '2-digit', 
-                      year: 'numeric', 
-                      hour: '2-digit', 
-                      minute: '2-digit', 
-                      hour12: true 
+                    return d.toLocaleString('en-GB', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
                     }).toUpperCase();
                   };
 
@@ -611,8 +613,8 @@ const SuperAdminDashboard = () => {
                         </div>
                       </td>
                       <td style={{ padding: '1rem' }}>
-                        <span style={{ 
-                          padding: '0.2rem 0.55rem', borderRadius: '999px', 
+                        <span style={{
+                          padding: '0.2rem 0.55rem', borderRadius: '999px',
                           background: `${severityColor}20`, color: severityColor,
                           fontWeight: '700', fontSize: '0.75rem'
                         }}>
