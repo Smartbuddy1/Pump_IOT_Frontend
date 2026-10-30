@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Component } from 'react';
 import { 
   Activity, 
   Radio, 
@@ -15,7 +15,13 @@ import {
   Clock, 
   Calendar,
   Sparkles,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ArrowUpCircle,
+  AlertCircle
 } from 'lucide-react';
 import api from '../services/api';
 import { socket } from '../hooks/useSocket';
@@ -24,32 +30,66 @@ import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
 import { useAuth } from '../context/AuthContext';
 
-const Readings = () => {
+// Built-in Component Error Boundary for complete crash immunity
+class SafeViewBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('SafeViewBoundary caught an error in Readings:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '3rem', textAlign: 'center', background: 'var(--surface-bg)', borderRadius: '16px', border: '1px solid #ef4444' }}>
+          <AlertCircle size={40} color="#ef4444" style={{ marginBottom: '1rem' }} />
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#ef4444' }}>Unable to display readings</h2>
+          <p style={{ color: 'var(--text-secondary)' }}>A temporary rendering error occurred. Please refresh the page.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            style={{ marginTop: '1rem', padding: '0.6rem 1.2rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
+          >
+            Refresh Readings
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const ReadingsContent = () => {
   const { user } = useAuth();
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMachine, setSelectedMachine] = useState('All');
+  
+  // Robust Pagination States
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [jumpPageInput, setJumpPageInput] = useState('');
+
+  // Unread live packets indicator if user is viewing older pages
+  const [unreadLiveCount, setUnreadLiveCount] = useState(0);
 
   // Track newly arrived reading IDs for glowing green animation
   const [newReadingIds, setNewReadingIds] = useState(new Set());
-  const [lastPacketTime, setLastPacketTime] = useState(Date.now());
   const [secondsSinceLastPacket, setSecondsSinceLastPacket] = useState(0);
 
-  // Fetch readings from backend API
+  // Fetch 2-day readings from backend API
   const fetchReadings = async () => {
     try {
       setLoading(true);
       const res = await api.get('/analytics/readings', {
-        params: { limit: 200 }
+        params: { days: 2, limit: 1500 }
       });
       if (res.data?.success && Array.isArray(res.data.data)) {
         setReadings(res.data.data);
-        if (res.data.data.length > 0) {
-          setLastPacketTime(new Date(res.data.data[0].timestamp).getTime());
-        }
       }
     } catch (err) {
       console.error('Failed to load readings history:', err);
@@ -70,7 +110,7 @@ const Readings = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Socket.IO real-time listener for incoming 30s PCB telemetry packets
+  // Socket.IO real-time listener with deduplication & crash-proof number validation
   useEffect(() => {
     let lastKey = '';
     const handleNewTelemetry = (data) => {
@@ -99,7 +139,7 @@ const Readings = () => {
 
       const newEntry = {
         id: newId,
-        machineId: data.machineId || 'SBE20001',
+        machineId: String(data.machineId || 'SBE20001'),
         temp: cleanTemp,
         humidity: cleanHum,
         vocGas: cleanVoc,
@@ -110,9 +150,17 @@ const Readings = () => {
         isLiveStream: true
       };
 
-      setReadings(prev => [newEntry, ...(Array.isArray(prev) ? prev : [])].slice(0, 500));
-      setLastPacketTime(Date.now());
+      // Cap memory array to 2000 items so browser never runs out of memory or crashes
+      setReadings(prev => [newEntry, ...(Array.isArray(prev) ? prev : [])].slice(0, 2000));
       setSecondsSinceLastPacket(0);
+
+      // If user is on page > 1, notify them instead of abruptly moving their scroll
+      setCurrentPage(current => {
+        if (current > 1) {
+          setUnreadLiveCount(cnt => cnt + 1);
+        }
+        return current;
+      });
 
       // Highlight new row with green pulse
       setNewReadingIds(prev => new Set([...prev, newId]));
@@ -134,44 +182,74 @@ const Readings = () => {
     };
   }, []);
 
-  // Unique machine list for filter
+  // Safe unique machine list for filter
   const machineOptions = useMemo(() => {
     const set = new Set();
-    readings.forEach(r => {
-      if (r.machineId) set.add(r.machineId);
-    });
+    if (Array.isArray(readings)) {
+      readings.forEach(r => {
+        if (r && r.machineId) set.add(String(r.machineId));
+      });
+    }
     return Array.from(set);
   }, [readings]);
 
-  // Filtered readings
+  // Safe filtered readings
   const filteredReadings = useMemo(() => {
+    if (!Array.isArray(readings)) return [];
     return readings.filter(r => {
-      if (selectedMachine !== 'All' && String(r.machineId).toLowerCase() !== selectedMachine.toLowerCase()) {
+      if (!r) return false;
+      if (selectedMachine !== 'All' && String(r.machineId || '').toLowerCase() !== selectedMachine.toLowerCase()) {
         return false;
       }
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
         const m = String(r.machineId || '').toLowerCase();
-        const t = String(r.temp || '');
-        const h = String(r.humidity || '');
-        const v = String(r.vocGas || '');
-        const n = String(r.nh3 || '');
-        const s = String(r.h2s || '');
+        const t = String(r.temp ?? '');
+        const h = String(r.humidity ?? '');
+        const v = String(r.vocGas ?? '');
+        const n = String(r.nh3 ?? '');
+        const s = String(r.h2s ?? '');
         return m.includes(q) || t.includes(q) || h.includes(q) || v.includes(q) || n.includes(q) || s.includes(q);
       }
       return true;
     });
   }, [readings, selectedMachine, searchTerm]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredReadings.length / itemsPerPage) || 1;
+  // Total pages calculation with safety check
+  const totalPages = Math.max(1, Math.ceil(filteredReadings.length / itemsPerPage));
+
+  // Reset current page if out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  // Slice paginated items safely
   const paginatedReadings = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredReadings.slice(start, start + itemsPerPage);
-  }, [filteredReadings, currentPage]);
+  }, [filteredReadings, currentPage, itemsPerPage]);
 
-  // Latest reading for KPI cards
-  const latest = readings[0] || {
+  // Jump to latest (page 1)
+  const handleJumpToLatest = () => {
+    setCurrentPage(1);
+    setUnreadLiveCount(0);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Handle jump page form submit
+  const handleJumpPageSubmit = (e) => {
+    e.preventDefault();
+    const p = parseInt(jumpPageInput, 10);
+    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+      setCurrentPage(p);
+      setJumpPageInput('');
+    }
+  };
+
+  // Safe Latest reading for KPI cards
+  const latest = (readings && readings.length > 0) ? readings[0] : {
     machineId: 'SBE20001',
     temp: 31,
     humidity: 61,
@@ -181,7 +259,7 @@ const Readings = () => {
     timestamp: new Date().toISOString()
   };
 
-  // Format date helper
+  // Format date helper with robust fallback
   const formatDate = (isoStr) => {
     if (!isoStr) return { date: '-', time: '-' };
     try {
@@ -196,6 +274,24 @@ const Readings = () => {
     }
   };
 
+  // Generate smart pagination buttons
+  const paginationRange = useMemo(() => {
+    const range = [];
+    const maxVisibleButtons = 5;
+    
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + maxVisibleButtons - 1);
+    
+    if (endPage - startPage < maxVisibleButtons - 1) {
+      startPage = Math.max(1, endPage - maxVisibleButtons + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      range.push(i);
+    }
+    return range;
+  }, [currentPage, totalPages]);
+
   // Export to PDF
   const handleExportPDF = () => {
     if (filteredReadings.length === 0) {
@@ -209,11 +305,11 @@ const Readings = () => {
         i + 1,
         `${dt.date} ${dt.time}`,
         r.machineId || 'SBE20001',
-        `${r.temp}°C`,
-        `${r.humidity}%`,
-        `${r.vocGas} PPM`,
-        `${r.nh3} PPM`,
-        `${r.h2s} PPM`,
+        `${r.temp ?? '-'}°C`,
+        `${r.humidity ?? '-'}%`,
+        `${r.vocGas ?? '-'} PPM`,
+        `${r.nh3 ?? '-'} PPM`,
+        `${r.h2s ?? '-'} PPM`,
         '30s Stream'
       ];
     });
@@ -237,20 +333,20 @@ const Readings = () => {
     const headers = ['Index,Timestamp,MachineID,Temperature_C,Humidity_Percent,VOC_Gas_PPM,NH3_PPM,H2S_PPM,Interval'];
     const csvRows = filteredReadings.map((r, i) => {
       const dt = formatDate(r.timestamp);
-      return `${i + 1},"${dt.date} ${dt.time}",${r.machineId || 'SBE20001'},${r.temp},${r.humidity},${r.vocGas},${r.nh3},${r.h2s},30s`;
+      return `${i + 1},"${dt.date} ${dt.time}",${r.machineId || 'SBE20001'},${r.temp ?? ''},${r.humidity ?? ''},${r.vocGas ?? ''},${r.nh3 ?? ''},${r.h2s ?? ''},30s`;
     });
     const blob = new Blob([[headers, ...csvRows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `PCB_Readings_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `PCB_Readings_2Days_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div style={{ padding: '0.5rem 2rem 2.5rem 2rem', animation: 'fadeIn 0.4s ease-in', maxWidth: '1400px', margin: '0 auto', color: 'var(--text-primary)' }}>
-      {/* Styles for Live Pulse & Green Header */}
+    <div style={{ padding: '0.5rem 2rem 2.5rem 2rem', animation: 'fadeIn 0.3s ease-in', maxWidth: '1400px', margin: '0 auto', color: 'var(--text-primary)' }}>
+      {/* Live Pulse & Flash CSS */}
       <style>{`
         @keyframes greenPulse {
           0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
@@ -258,7 +354,7 @@ const Readings = () => {
           100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
         @keyframes rowFlash {
-          0% { background-color: rgba(16, 185, 129, 0.35); }
+          0% { background-color: rgba(16, 185, 129, 0.38); }
           50% { background-color: rgba(16, 185, 129, 0.18); }
           100% { background-color: transparent; }
         }
@@ -276,7 +372,7 @@ const Readings = () => {
       `}</style>
 
       {/* Corporate Print Header */}
-      <PrintHeader title="PCB LIVE TELEMETRY & SENSOR READINGS REPORT" />
+      <PrintHeader title="PCB LIVE TELEMETRY & 2-DAY SENSOR READINGS REPORT" />
 
       {/* Top Banner with Vibrant Green Theme */}
       <div className="no-print" style={{ 
@@ -284,7 +380,7 @@ const Readings = () => {
         border: '1.5px solid rgba(16, 185, 129, 0.35)',
         borderRadius: '16px',
         padding: '1.5rem 1.75rem',
-        marginBottom: '1.75rem',
+        marginBottom: '1.5rem',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -315,7 +411,8 @@ const Readings = () => {
               letterSpacing: '-0.02em',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.6rem'
+              gap: '0.6rem',
+              flexWrap: 'wrap'
             }}>
               PCB Live Sensor Readings
               <span style={{
@@ -332,6 +429,17 @@ const Readings = () => {
               }}>
                 <span className="live-dot"></span>
                 LIVE 30s STREAM
+              </span>
+              <span style={{
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                padding: '0.25rem 0.65rem',
+                borderRadius: '9999px',
+                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                color: '#2563eb',
+                border: '1px solid rgba(59, 130, 246, 0.3)'
+              }}>
+                2-Day History (SuperAdmin Demo)
               </span>
             </h1>
           </div>
@@ -352,7 +460,7 @@ const Readings = () => {
         }}>
           <Clock size={20} color="#10b981" />
           <div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>PCB Packet Interval</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase' }}>PCB Packet Stream</div>
             <div style={{ fontSize: '0.95rem', fontWeight: '800', color: '#10b981' }}>
               Every 30 Seconds
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: '500', marginLeft: '6px' }}>
@@ -363,12 +471,51 @@ const Readings = () => {
         </div>
       </div>
 
+      {/* Floating Notice if New Readings Arrive while user is on Page 2+ */}
+      {unreadLiveCount > 0 && currentPage > 1 && (
+        <div style={{
+          background: '#10b981',
+          color: 'white',
+          padding: '0.75rem 1.25rem',
+          borderRadius: '10px',
+          marginBottom: '1.25rem',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)',
+          animation: 'fadeIn 0.3s'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: '700', fontSize: '0.9rem' }}>
+            <span className="live-dot" style={{ backgroundColor: 'white' }}></span>
+            {unreadLiveCount} new 30-sec PCB reading(s) arrived at the top!
+          </div>
+          <button
+            onClick={handleJumpToLatest}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              backgroundColor: 'white',
+              color: '#047857',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '0.35rem 0.85rem',
+              fontWeight: '700',
+              cursor: 'pointer',
+              fontSize: '0.82rem'
+            }}
+          >
+            <ArrowUpCircle size={16} /> Jump to Latest (Page 1)
+          </button>
+        </div>
+      )}
+
       {/* Top Metric Cards - Live Values */}
       <div className="no-print" style={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
         gap: '1rem', 
-        marginBottom: '1.75rem' 
+        marginBottom: '1.5rem' 
       }}>
         {/* Machine ID */}
         <div style={{ background: 'var(--surface-bg)', padding: '1.1rem 1.25rem', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
@@ -452,7 +599,10 @@ const Readings = () => {
               type="text"
               placeholder="Search by Machine, Temp, Gas..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{
                 width: '100%',
                 padding: '0.55rem 0.75rem 0.55rem 2.25rem',
@@ -467,7 +617,10 @@ const Readings = () => {
 
           <select
             value={selectedMachine}
-            onChange={(e) => setSelectedMachine(e.target.value)}
+            onChange={(e) => {
+              setSelectedMachine(e.target.value);
+              setCurrentPage(1);
+            }}
             style={{
               padding: '0.55rem 1rem',
               borderRadius: '8px',
@@ -484,6 +637,33 @@ const Readings = () => {
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
+
+          {/* Rows per page selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            <span style={{ fontWeight: '600' }}>Show:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '0.45rem 0.65rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--hover-bg, #f8fafc)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
         </div>
 
         {/* Right Buttons */}
@@ -491,7 +671,7 @@ const Readings = () => {
           <button
             onClick={fetchReadings}
             disabled={loading}
-            title="Refresh Readings"
+            title="Refresh 2-day readings"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -554,7 +734,7 @@ const Readings = () => {
         </div>
       </div>
 
-      {/* Main Readings Table */}
+      {/* Main Readings Table with Crash-Proof Guards */}
       <div style={{
         background: 'var(--surface-bg)',
         borderRadius: '16px',
@@ -592,13 +772,15 @@ const Readings = () => {
                 </tr>
               ) : paginatedReadings.length > 0 ? (
                 paginatedReadings.map((r, index) => {
+                  if (!r) return null;
                   const dt = formatDate(r.timestamp);
                   const isJustArrived = newReadingIds.has(r.id);
                   const globalIdx = (currentPage - 1) * itemsPerPage + index + 1;
+                  const rowKey = r.id || `read-${globalIdx}-${r.timestamp}`;
 
                   return (
                     <tr 
-                      key={r.id || `reading-${index}`}
+                      key={rowKey}
                       className={isJustArrived ? 'row-just-arrived' : ''}
                       style={{ 
                         borderBottom: '1px solid var(--border-color)',
@@ -606,18 +788,18 @@ const Readings = () => {
                       }}
                     >
                       {/* Index */}
-                      <td style={{ padding: '1rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                      <td style={{ padding: '0.95rem 1rem', color: 'var(--text-secondary)', fontWeight: '600' }}>
                         {globalIdx}
                       </td>
 
                       {/* Timestamp */}
-                      <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '0.95rem 1rem', whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{dt.time}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{dt.date}</div>
                       </td>
 
                       {/* Machine ID */}
-                      <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '0.95rem 1rem', whiteSpace: 'nowrap' }}>
                         <span style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -636,7 +818,7 @@ const Readings = () => {
                       </td>
 
                       {/* Temp */}
-                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-block',
                           padding: '0.3rem 0.75rem',
@@ -647,12 +829,12 @@ const Readings = () => {
                           color: '#d97706',
                           border: '1px solid rgba(245, 158, 11, 0.3)'
                         }}>
-                          {r.temp}°C
+                          {r.temp ?? '-'}°C
                         </span>
                       </td>
 
                       {/* Humidity */}
-                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-block',
                           padding: '0.3rem 0.75rem',
@@ -663,12 +845,12 @@ const Readings = () => {
                           color: '#2563eb',
                           border: '1px solid rgba(59, 130, 246, 0.3)'
                         }}>
-                          {r.humidity}%
+                          {r.humidity ?? '-'}%
                         </span>
                       </td>
 
                       {/* VOC Gas */}
-                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-block',
                           padding: '0.3rem 0.75rem',
@@ -679,12 +861,12 @@ const Readings = () => {
                           color: '#059669',
                           border: '1px solid rgba(16, 185, 129, 0.3)'
                         }}>
-                          {r.vocGas} <span style={{ fontSize: '0.72rem' }}>PPM</span>
+                          {r.vocGas ?? '-'} <span style={{ fontSize: '0.72rem' }}>PPM</span>
                         </span>
                       </td>
 
                       {/* NH3 */}
-                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-block',
                           padding: '0.3rem 0.75rem',
@@ -695,12 +877,12 @@ const Readings = () => {
                           color: '#0284c7',
                           border: '1px solid rgba(14, 165, 233, 0.3)'
                         }}>
-                          {r.nh3} <span style={{ fontSize: '0.72rem' }}>PPM</span>
+                          {r.nh3 ?? '-'} <span style={{ fontSize: '0.72rem' }}>PPM</span>
                         </span>
                       </td>
 
                       {/* H2S */}
-                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-block',
                           padding: '0.3rem 0.75rem',
@@ -711,12 +893,12 @@ const Readings = () => {
                           color: '#7c3aed',
                           border: '1px solid rgba(139, 92, 246, 0.3)'
                         }}>
-                          {r.h2s} <span style={{ fontSize: '0.72rem' }}>PPM</span>
+                          {r.h2s ?? '-'} <span style={{ fontSize: '0.72rem' }}>PPM</span>
                         </span>
                       </td>
 
                       {/* Interval / Status */}
-                      <td style={{ padding: '1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <span style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -747,7 +929,7 @@ const Readings = () => {
           </table>
         </div>
 
-        {/* Pagination Bar */}
+        {/* Advanced Full Pagination Bar */}
         <div className="no-print" style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -756,48 +938,162 @@ const Readings = () => {
           borderTop: '1px solid var(--border-color)',
           backgroundColor: 'rgba(0,0,0,0.01)',
           flexWrap: 'wrap',
-          gap: '0.5rem'
+          gap: '1rem'
         }}>
+          {/* Total Count Info */}
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '500' }}>
-            Showing <b>{Math.min(filteredReadings.length, (currentPage - 1) * itemsPerPage + 1)}</b> to <b>{Math.min(filteredReadings.length, currentPage * itemsPerPage)}</b> of <b>{filteredReadings.length}</b> total PCB readings
+            Showing <b>{filteredReadings.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</b> to <b>{Math.min(filteredReadings.length, currentPage * itemsPerPage)}</b> of <b>{filteredReadings.length}</b> total 2-day PCB readings
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {/* Pagination Navigation & Jump Form */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* First Page */}
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              title="First Page"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.45rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                background: currentPage === 1 ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                color: currentPage === 1 ? 'var(--text-secondary)' : 'var(--text-primary)',
+                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <ChevronsLeft size={16} />
+            </button>
+
+            {/* Prev Page */}
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
+              title="Previous Page"
               style={{
-                padding: '0.45rem 0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.2rem',
+                padding: '0.45rem 0.75rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: currentPage === 1 ? 'var(--border-color)' : 'var(--surface-bg)',
-                color: 'var(--text-primary)',
+                background: currentPage === 1 ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                color: currentPage === 1 ? 'var(--text-secondary)' : 'var(--text-primary)',
                 cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
-                fontSize: '0.85rem'
+                fontSize: '0.82rem'
               }}
             >
-              Previous
+              <ChevronLeft size={16} /> Prev
             </button>
-            <span style={{ padding: '0 0.5rem', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)' }}>
-              {currentPage} / {totalPages}
-            </span>
+
+            {/* Numbered Page Buttons */}
+            {paginationRange.map(pageNum => (
+              <button
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                style={{
+                  minWidth: '32px',
+                  height: '32px',
+                  padding: '0 0.5rem',
+                  borderRadius: '6px',
+                  border: pageNum === currentPage ? '1.5px solid #10b981' : '1px solid var(--border-color)',
+                  background: pageNum === currentPage ? '#10b981' : 'var(--surface-bg)',
+                  color: pageNum === currentPage ? '#ffffff' : 'var(--text-primary)',
+                  fontWeight: pageNum === currentPage ? '800' : '600',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                {pageNum}
+              </button>
+            ))}
+
+            {/* Next Page */}
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
+              title="Next Page"
               style={{
-                padding: '0.45rem 0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.2rem',
+                padding: '0.45rem 0.75rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: currentPage === totalPages ? 'var(--border-color)' : 'var(--surface-bg)',
-                color: 'var(--text-primary)',
+                background: currentPage === totalPages ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                color: currentPage === totalPages ? 'var(--text-secondary)' : 'var(--text-primary)',
                 cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
-                fontSize: '0.85rem'
+                fontSize: '0.82rem'
               }}
             >
-              Next
+              Next <ChevronRight size={16} />
             </button>
+
+            {/* Last Page */}
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              title="Last Page"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.45rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                background: currentPage === totalPages ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                color: currentPage === totalPages ? 'var(--text-secondary)' : 'var(--text-primary)',
+                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <ChevronsRight size={16} />
+            </button>
+
+            {/* Quick Page Jump Form */}
+            <form onSubmit={handleJumpPageSubmit} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Go to:</span>
+              <input
+                type="number"
+                min="1"
+                max={totalPages}
+                placeholder={String(currentPage)}
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                style={{
+                  width: '52px',
+                  padding: '0.35rem 0.45rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--hover-bg, #f8fafc)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  fontWeight: '600',
+                  textAlign: 'center'
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  padding: '0.35rem 0.65rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-bg)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Go
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -807,5 +1103,12 @@ const Readings = () => {
   );
 };
 
-export default Readings;
+const Readings = () => {
+  return (
+    <SafeViewBoundary>
+      <ReadingsContent />
+    </SafeViewBoundary>
+  );
+};
 
+export default Readings;
