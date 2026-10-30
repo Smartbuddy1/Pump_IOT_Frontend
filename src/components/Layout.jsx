@@ -71,6 +71,7 @@ const Layout = () => {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['Admin', 'User', 'Super Admin'] },
+    { name: 'Readings', href: '/readings', icon: Radio, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Create OMC', href: '/omc', icon: Building, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Create RO', href: '/ro', icon: MapPin, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Machines', href: '/machine', icon: Cpu, roles: ['Admin', 'User', 'Super Admin'] },

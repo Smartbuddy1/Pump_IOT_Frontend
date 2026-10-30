@@ -14,6 +14,7 @@ const OMCDashboard = lazy(() => import('./pages/OMCDashboard'));
 const CreateOMC = lazy(() => import('./pages/CreateOMC'));
 const CreateRO = lazy(() => import('./pages/CreateRO'));
 const Machines = lazy(() => import('./pages/Machines'));
+const Readings = lazy(() => import('./pages/Readings'));
 const Alerts = lazy(() => import('./pages/Alerts'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Analysis = lazy(() => import('./pages/Analysis'));
@@ -115,6 +116,7 @@ function AppContent() {
                 {/* Redirect / to /dashboard */}
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="readings" element={<Readings />} />
                 <Route path="omc-dashboard" element={<OMCDashboard />} />
                 <Route path="omc" element={<CreateOMC />} />
                 <Route path="ro" element={<CreateRO />} />
