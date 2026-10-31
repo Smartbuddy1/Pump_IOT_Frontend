@@ -39,7 +39,7 @@ export const useSocket = () => {
       setIsConnected(true);
       // Notify backend to refresh room bindings for this socket connection
       const curToken = sessionStorage.getItem('token') || localStorage.getItem('token');
-      socket.emit('join_tenant', { token: curToken });
+      if (curToken) { socket.emit('join_tenant', { token: curToken }); }
     };
 
     const handleDisconnect = () => setIsConnected(false);
