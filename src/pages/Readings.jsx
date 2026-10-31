@@ -899,21 +899,40 @@ const ReadingsContent = () => {
 
                       {/* Interval / Status */}
                       <td style={{ padding: '0.95rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '0.25rem 0.65rem',
-                          borderRadius: '9999px',
-                          fontWeight: '700',
-                          fontSize: '0.75rem',
-                          backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                          color: '#10b981',
-                          border: '1px solid rgba(16, 185, 129, 0.3)'
-                        }}>
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                          30s Pulse
-                        </span>
+                        {r.isLiveStream ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '0.28rem 0.75rem',
+                            borderRadius: '9999px',
+                            fontWeight: '800',
+                            fontSize: '0.78rem',
+                            backgroundColor: 'rgba(16, 185, 129, 0.22)',
+                            color: '#059669',
+                            border: '1.5px solid #10b981',
+                            boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)'
+                          }}>
+                            <span className="live-dot" style={{ width: '7px', height: '7px' }}></span>
+                            ● Live PCB
+                          </span>
+                        ) : (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '9999px',
+                            fontWeight: '700',
+                            fontSize: '0.75rem',
+                            backgroundColor: 'rgba(100, 116, 139, 0.1)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid rgba(100, 116, 139, 0.2)'
+                          }}>
+                            <Clock size={12} />
+                            Historical (30s)
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
