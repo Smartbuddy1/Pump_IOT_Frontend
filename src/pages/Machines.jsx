@@ -923,13 +923,9 @@ const Machines = () => {
     }
 
     let cleanId = String(formData.id || '').trim();
-    const cleanSuffix = cleanId.replace(/^(SBP2T|SBE)/i, '').trim();
-    if (!cleanSuffix) {
-      alert(`Please enter Machine ID (after ${machinePrefix})`);
+    if (!cleanId) {
+      alert('Please enter Machine ID');
       return;
-    }
-    if (!cleanId.toUpperCase().startsWith('SBP2T') && !cleanId.toUpperCase().startsWith('SBE')) {
-      cleanId = `${machinePrefix}${cleanSuffix}`;
     }
     formData.id = cleanId;
 
@@ -1754,78 +1750,38 @@ const Machines = () => {
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
                       Machine ID <span style={{ color: '#ef4444' }}>*</span>
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'stretch' }}>
-                      <select
-                        value={machinePrefix}
-                        onChange={(e) => {
-                          const newPrefix = e.target.value;
-                          setMachinePrefix(newPrefix);
-                          const curSuffix = String(formData.id || '').replace(/^(SBP2T|SBE)/i, '').trim();
-                          setFormData(prev => ({
-                            ...prev,
-                            id: curSuffix ? `${newPrefix}${curSuffix}` : ''
-                          }));
-                        }}
-                        style={{ 
-                          padding: '0 0.65rem', 
-                          background: 'var(--hover-bg, #f1f5f9)', 
-                          border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
-                          borderRight: 'none', 
-                          borderRadius: '8px 0 0 8px', 
-                          fontWeight: '700', 
-                          color: isDuplicateId ? '#ef4444' : 'var(--text-primary)',
-                          fontSize: '0.88rem',
-                          cursor: 'pointer',
-                          outline: 'none'
-                        }}
-                      >
-                        <option value="SBP2T">SBP2T</option>
-                        <option value="SBE">SBE</option>
-                      </select>
-                      <input 
-                        type="text" 
-                        value={formData.id ? String(formData.id).replace(/^(SBP2T|SBE)/i, '') : ''} 
-                        onChange={(e) => {
-                          let val = e.target.value.trim();
-                          let pfx = machinePrefix;
-                          if (val.toUpperCase().startsWith('SBE')) {
-                            pfx = 'SBE';
-                            setMachinePrefix('SBE');
-                            val = val.substring(3);
-                          } else if (val.toUpperCase().startsWith('SBP2T')) {
-                            pfx = 'SBP2T';
-                            setMachinePrefix('SBP2T');
-                            val = val.substring(5);
-                          }
-                          const inputSuffix = val.replace(/^(SBP2T|SBE)/i, '').trim();
-                          setFormData(prev => ({
-                            ...prev,
-                            id: inputSuffix ? `${pfx}${inputSuffix}` : ''
-                          }));
-                        }}
-                        placeholder="Enter ID (e.g. 101 or 20001)"
-                        style={{ 
-                          flex: 1, 
-                          height: '42px',
-                          boxSizing: 'border-box',
-                          padding: '0.65rem 1rem', 
-                          borderRadius: '0 8px 8px 0', 
-                          border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
-                          background: 'var(--surface-bg)', 
-                          color: 'var(--text-primary)', 
-                          fontWeight: '700', 
-                          letterSpacing: '0.5px',
-                          outline: 'none'
-                        }} 
-                      />
-                    </div>
+                    <input 
+                      type="text" 
+                      value={formData.id || ''} 
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setFormData(prev => ({
+                          ...prev,
+                          id: val
+                        }));
+                      }}
+                      placeholder="Enter Machine ID (e.g. SBE20001)"
+                      style={{ 
+                        width: '100%',
+                        height: '42px',
+                        boxSizing: 'border-box',
+                        padding: '0.65rem 1rem', 
+                        borderRadius: '8px', 
+                        border: isDuplicateId ? '1.5px solid #ef4444' : '1px solid var(--border-color)', 
+                        background: 'var(--surface-bg)', 
+                        color: 'var(--text-primary)', 
+                        fontWeight: '700', 
+                        letterSpacing: '0.5px',
+                        outline: 'none'
+                      }} 
+                    />
                     {isDuplicateId ? (
                       <span style={{ fontSize: '0.78rem', color: '#ef4444', fontWeight: '700', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                         <AlertTriangle size={14} /> Machine ID "{formData.id}" already exists! Please enter a unique ID.
                       </span>
                     ) : (
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                        Prefix (SBP2T / SBE) followed by custom ID
+                        Enter full Machine ID (e.g. SBE20001)
                       </span>
                     )}
                   </div>
