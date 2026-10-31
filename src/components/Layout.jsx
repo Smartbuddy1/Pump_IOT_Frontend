@@ -71,7 +71,6 @@ const Layout = () => {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['Admin', 'User', 'Super Admin'] },
-    { name: 'Readings', href: '/readings', icon: Radio, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Create OMC', href: '/omc', icon: Building, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Create RO', href: '/ro', icon: MapPin, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Machines', href: '/machine', icon: Cpu, roles: ['Admin', 'User', 'Super Admin'] },
@@ -79,6 +78,7 @@ const Layout = () => {
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Analysis', href: '/analysis', icon: PieChart, roles: ['Admin', 'User', 'Super Admin'] },
     { name: 'Feedbacks', href: '/feedbacks', icon: MessageSquare, roles: ['Admin', 'User', 'Super Admin'] },
+    { name: 'Readings', href: '/readings', icon: Radio, roles: ['Admin', 'User', 'Super Admin'] },
   ];
 
   return (
