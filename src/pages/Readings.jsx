@@ -123,19 +123,19 @@ const ReadingsContent = () => {
 
       const newId = `live-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const parsedTemp = parseFloat(String(data.temperature ?? '').replace(/[^0-9.-]/g, ''));
-      const cleanTemp = !isNaN(parsedTemp) ? parsedTemp : 31;
+      const cleanTemp = !isNaN(parsedTemp) ? parsedTemp : 0;
 
       const parsedHum = parseFloat(String(data.humidity ?? '').replace(/[^0-9.-]/g, ''));
-      const cleanHum = !isNaN(parsedHum) ? parsedHum : 61;
+      const cleanHum = !isNaN(parsedHum) ? parsedHum : 0;
 
       const parsedVoc = parseFloat(String(data.odour ?? data.vocGas ?? '').replace(/[^0-9.-]/g, ''));
-      const cleanVoc = !isNaN(parsedVoc) ? parsedVoc : 1153;
+      const cleanVoc = !isNaN(parsedVoc) ? parsedVoc : 0;
 
       const parsedNh3 = parseFloat(String(data.nh3 ?? '').replace(/[^0-9.-]/g, ''));
-      const cleanNh3 = !isNaN(parsedNh3) ? parsedNh3 : 614;
+      const cleanNh3 = !isNaN(parsedNh3) ? parsedNh3 : 0;
 
       const parsedH2s = parseFloat(String(data.h2s ?? '').replace(/[^0-9.-]/g, ''));
-      const cleanH2s = !isNaN(parsedH2s) ? parsedH2s : 1266;
+      const cleanH2s = !isNaN(parsedH2s) ? parsedH2s : 0;
 
       const newEntry = {
         id: newId,
