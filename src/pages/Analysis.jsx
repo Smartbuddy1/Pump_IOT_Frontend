@@ -787,7 +787,7 @@ const Analysis = () => {
           icon: <Thermometer size={24} color={GREEN_COLOR} />,
           badge: null,
           data: displayedTempData,
-          yDomain: [0, 50],
+          yDomain: ['dataMin - 3', 'dataMax + 3'],
           yUnit: '°C',
           tooltipFormatter: (val) => [`${val}°C`, 'Temperature']
         };
@@ -1348,7 +1348,7 @@ const Analysis = () => {
                     <LineChart data={displayedTempData} margin={{ top: 15, right: 15, left: -20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.6} />
                       <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 500 }} />
-                      <YAxis domain={[0, 50]} unit="°C" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
+                      <YAxis domain={['dataMin - 3', 'dataMax + 3']} unit="°C" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                       <RechartsTooltip cursor={{ stroke: 'rgba(16, 185, 129, 0.4)', strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: 'var(--surface-bg)', borderRadius: '8px', border: '1px solid var(--border-color)', color: 'var(--text-primary)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} labelFormatter={(label) => `Time/Date: ${label}`} formatter={(val) => [`${val}°C`, 'Temperature']} />
                       <Line type="monotone" dataKey="value" stroke={GREEN_COLOR} strokeWidth={3} dot={{ r: 4, fill: GREEN_COLOR, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} />
                     </LineChart>
