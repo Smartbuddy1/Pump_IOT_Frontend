@@ -314,11 +314,11 @@ const ReadingsContent = () => {
     });
 
     exportToPDF(
-      'PCB Live Telemetry & Sensor Readings Report (30s Stream)',
+      'PCB Live Sensor Readings',
       columns,
       rows,
       {
-        generatedBy: user?.name ? `${user.name} (${user.role})` : 'Super Admin'
+        generatedBy: 'Super Admin'
       }
     );
   };
@@ -438,7 +438,7 @@ const ReadingsContent = () => {
                 color: '#2563eb',
                 border: '1px solid rgba(59, 130, 246, 0.3)'
               }}>
-                2-Day History (SuperAdmin Demo)
+                2-Day History
               </span>
             </h1>
           </div>

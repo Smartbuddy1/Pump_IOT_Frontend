@@ -84,16 +84,21 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
       console.warn("Right logo draw error:", e);
     }
 
-    // 2. Header Text (Centered safely between both logos, width ~118mm)
+    // 2. Header Text (Centered safely between both logos, width ~108mm)
     const centerX = pageWidth / 2;
+    const maxCenterWidth = pageWidth - (14 + logoW + 5) * 2; // ~108mm safe width between logos
+
     doc.setTextColor(5, 150, 105); // Emerald Green
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(13.5);
-    doc.text("SMARTBUDDY PETROLEUM IOT PLATFORM", centerX, 13, { align: 'center' });
+    doc.setFontSize(12.5);
+    doc.text("SMARTBUDDY PETROLEUM IOT PLATFORM", centerX, 12.8, { align: 'center', maxWidth: maxCenterWidth });
 
+    const titleStr = String(title || 'SYSTEM TELEMETRY REPORT').toUpperCase();
+    const titleFontSize = titleStr.length > 32 ? 9 : (titleStr.length > 24 ? 9.5 : 10.5);
     doc.setTextColor(30, 41, 59); // Slate 800
-    doc.setFontSize(11);
-    doc.text(String(title || 'SYSTEM TELEMETRY REPORT').toUpperCase(), centerX, 19, { align: 'center' });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(titleFontSize);
+    doc.text(titleStr, centerX, 18.5, { align: 'center', maxWidth: maxCenterWidth });
 
     // Metadata lines (OMC, RO, Machine, Period) - Placed safely BELOW the logos (Y > 25mm)
     // to guarantee ZERO overlap with left or right logos across full page width
@@ -119,11 +124,11 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
     });
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    const roleText = options.generatedBy || 'SuperAdmin (9284188705)';
+    const roleText = options.generatedBy || 'Super Admin';
     const recordCountText = options.hideTable
       ? ''
-      : `   |   Total Records: ${rows ? rows.length : 0}`;
-    doc.text(`Generated: ${genTimestamp}   |   User: ${roleText}${recordCountText}`, centerX, currentY, { align: 'center', maxWidth: pageWidth - 28 });
+      : `   |   Records: ${rows ? rows.length : 0}`;
+    doc.text(`Date: ${genTimestamp}   |   ${roleText}${recordCountText}`, centerX, currentY, { align: 'center', maxWidth: pageWidth - 28 });
 
     // Decorative Accent Line
     const lineY = currentY + 3.5;
