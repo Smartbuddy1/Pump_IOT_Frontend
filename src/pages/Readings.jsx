@@ -298,13 +298,17 @@ const ReadingsContent = () => {
       alert('No readings available to export.');
       return;
     }
-    const columns = ['#', 'TIMESTAMP', 'MACHINE ID', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC GAS (PPM)', 'NH3 (PPM)', 'H2S (PPM)'];
+    const targetMachineId = (selectedMachine && selectedMachine !== 'All')
+      ? selectedMachine
+      : (filteredReadings[0]?.machineId || 'SBE20001');
+
+    // MACHINE ID is displayed prominently in header instead of repeating on each row
+    const columns = ['#', 'TIMESTAMP', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC GAS (PPM)', 'NH3 (PPM)', 'H2S (PPM)'];
     const rows = filteredReadings.map((r, i) => {
       const dt = formatDate(r.timestamp);
       return [
         i + 1,
         `${dt.date} ${dt.time}`,
-        r.machineId || 'SBE20001',
         `${r.temp ?? '-'}°C`,
         `${r.humidity ?? '-'}%`,
         `${r.vocGas ?? '-'} PPM`,
@@ -318,6 +322,8 @@ const ReadingsContent = () => {
       columns,
       rows,
       {
+        machineId: targetMachineId,
+        machineName: targetMachineId,
         generatedBy: 'Super Admin'
       }
     );

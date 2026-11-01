@@ -103,17 +103,17 @@ export const exportToPDF = (title, columns, rows, options = {}) => {
     // Metadata lines (OMC, RO, Machine, Period) - Placed safely BELOW the logos (Y > 25mm)
     // to guarantee ZERO overlap with left or right logos across full page width
     const metaParts = [];
+    const targetMId = options.machineId || (options.machineName && options.machineName !== 'All' ? options.machineName : null);
+    if (targetMId) metaParts.push(`Machine ID: ${targetMId}`);
     if (options.clientName && options.clientName !== 'All') metaParts.push(`OMC: ${options.clientName}`);
     if (options.roName && options.roName !== 'All') metaParts.push(`RO: ${options.roName}`);
-    if (options.machineName && options.machineName !== 'All') metaParts.push(`Machine: ${options.machineName}`);
     if (options.dateRange && !options.dateRange.toLowerCase().includes('total machine')) metaParts.push(`Period: ${options.dateRange}`);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(71, 85, 105);
 
     let currentY = logoY + logoH + 3.5; // Starts at Y = 28mm (strictly below the 24.5mm logo bottom)
     if (metaParts.length > 0) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59); // Slate 800
       doc.text(metaParts.join('   |   '), centerX, currentY, { align: 'center', maxWidth: pageWidth - 28 });
       currentY += 4.5;
     }
