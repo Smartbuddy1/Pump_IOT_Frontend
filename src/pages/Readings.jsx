@@ -410,36 +410,9 @@ const ReadingsContent = () => {
               letterSpacing: '-0.02em',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.6rem',
-              flexWrap: 'wrap'
+              gap: '0.6rem'
             }}>
               PCB Live Sensor Readings
-              <span style={{
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                padding: '0.25rem 0.65rem',
-                borderRadius: '9999px',
-                backgroundColor: 'rgba(16, 185, 129, 0.18)',
-                color: '#047857',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <span className="live-dot"></span>
-                LIVE 30s STREAM
-              </span>
-              <span style={{
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                padding: '0.25rem 0.65rem',
-                borderRadius: '9999px',
-                backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                color: '#2563eb',
-                border: '1px solid rgba(59, 130, 246, 0.3)'
-              }}>
-                2-Day History
-              </span>
             </h1>
           </div>
 

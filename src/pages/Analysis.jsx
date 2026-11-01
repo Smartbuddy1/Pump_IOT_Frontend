@@ -8,6 +8,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from 'recharts';
 import api from '../services/api';
+import { socket } from '../hooks/useSocket';
 import { exportToPDF } from '../utils/exportUtils';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
@@ -32,6 +33,7 @@ const Analysis = () => {
   const [omcs, setOmcs] = useState([]);
   const [ros, setRos] = useState([]);
   const [machines, setMachines] = useState([]);
+  const [liveReadings, setLiveReadings] = useState([]);
   const [isExporting, setIsExporting] = useState(false);
   const [filterApplied, setFilterApplied] = useState(false);
   const [fullscreenGraph, setFullscreenGraph] = useState(null); // 'temp' | 'humidity' | 'odour' | 'water' | 'usage' | null
@@ -115,6 +117,55 @@ const Analysis = () => {
       setSelectedClient(String(assignedOmc.id));
     }
   }, [isOmcAdmin, isRoUser, assignedOmc, selectedClient]);
+
+  // Real-Time Socket.IO telemetry listener for live graph updates
+  useEffect(() => {
+    const handleLiveTelemetry = (data) => {
+      if (!data || !data.machineId) return;
+
+      const incomingMachId = String(data.machineId || '').trim();
+      const newReading = {
+        id: Date.now(),
+        machineId: incomingMachId,
+        temp: parseFloat(data.temperature) || 0,
+        humidity: parseFloat(data.humidity) || 0,
+        vocGas: parseFloat(data.odour || data.vocGas) || 0,
+        nh3: parseFloat(data.nh3) || 0,
+        h2s: parseFloat(data.h2s) || 0,
+        water: parseFloat(data.water) || 100,
+        timestamp: data.timestamp || new Date().toISOString()
+      };
+
+      setLiveReadings(prev => [newReading, ...(Array.isArray(prev) ? prev.slice(0, 49) : [])]);
+
+      // Update machine live state
+      setMachines(prev => (Array.isArray(prev) ? prev : []).map(m => {
+        const mName = String(m.name || m.id || '').toLowerCase().trim();
+        const targetId = incomingMachId.toLowerCase();
+        if (mName === targetId || mName.replace(/o/g, '0') === targetId.replace(/o/g, '0')) {
+          return {
+            ...m,
+            live_temp: newReading.temp,
+            live_humidity: newReading.humidity,
+            live_odour: newReading.vocGas,
+            live_nh3: newReading.nh3,
+            live_h2s: newReading.h2s,
+            live_water: data.water || m.live_water,
+            status: 'Running'
+          };
+        }
+        return m;
+      }));
+    };
+
+    socket.on('live_data_update', handleLiveTelemetry);
+    socket.on('new_reading', handleLiveTelemetry);
+
+    return () => {
+      socket.off('live_data_update', handleLiveTelemetry);
+      socket.off('new_reading', handleLiveTelemetry);
+    };
+  }, []);
 
   // 5 Histogram Datasets (All in Simple Green)
   const [tempData, setTempData] = useState([]);
@@ -265,7 +316,15 @@ const Analysis = () => {
       if (customFrom) params.startDate = customFrom;
       if (customTo) params.endDate = customTo;
 
-      const res = await api.get('/analytics/history', { params });
+      const [res, readingsRes] = await Promise.all([
+        api.get('/analytics/history', { params }).catch(() => ({ data: { data: [] } })),
+        api.get('/analytics/readings', { params: { ...params, limit: 100 } }).catch(() => ({ data: { data: [] } }))
+      ]);
+
+      const rawReadings = readingsRes.data?.data || [];
+      if (Array.isArray(rawReadings) && rawReadings.length > 0) {
+        setLiveReadings(rawReadings);
+      }
 
       let history = (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0)
         ? res.data.data
@@ -381,7 +440,9 @@ const Analysis = () => {
         setRos(loadedROs);
         setMachines(loadedMachines);
 
-        // Do not auto-fetch analytics on page load - graphs will display only when user applies filter
+        // Auto-fetch analytics on page load - graphs will display immediately!
+        await fetchAnalytics('All', '', '', loadedMachines, 'All');
+        setFilterApplied(true);
       } catch (error) {
         console.error('Error fetching dropdown data:', error);
       }
@@ -442,17 +503,18 @@ const Analysis = () => {
       if (match) relevant = [match];
     }
     const count = relevant.length || 1;
-    const temp = Math.round(relevant.reduce((sum, m) => sum + (Number(m.live_temp) || 28), 0) / count) || 28;
-    const hum = Math.round(relevant.reduce((sum, m) => sum + (Number(m.live_humidity) || 50), 0) / count) || 50;
-    const odour = Math.round(relevant.reduce((sum, m) => {
+    const latestLive = liveReadings.length > 0 ? liveReadings[0] : null;
+    const temp = latestLive ? (Number(latestLive.temp) || 28) : (Math.round(relevant.reduce((sum, m) => sum + (Number(m.live_temp) || 28), 0) / count) || 28);
+    const hum = latestLive ? (Number(latestLive.humidity) || 50) : (Math.round(relevant.reduce((sum, m) => sum + (Number(m.live_humidity) || 50), 0) / count) || 50);
+    const odour = latestLive ? (Number(latestLive.vocGas) || 30) : Math.round(relevant.reduce((sum, m) => {
       const num = Number(String(m.live_odour || '30').replace(/[^0-9.-]/g, ''));
       return sum + (isNaN(num) || num <= 0 ? 30 : num);
     }, 0) / count) || 30;
-    const waterAlerts = relevant.filter(m => String(m.live_water || '').toLowerCase() === 'low').length;
-    const visits = relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0);
+    const waterAlerts = latestLive ? (Number(latestLive.water) < 10 ? 1 : 0) : relevant.filter(m => String(m.live_water || '').toLowerCase() === 'low').length;
+    const visits = liveReadings.length || relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0);
 
     return { temp, hum, odour, waterAlerts, visits };
-  }, [filteredMachinesForDropdown, selectedMachine, machines]);
+  }, [filteredMachinesForDropdown, selectedMachine, machines, liveReadings]);
 
   const getTimeframeSubtitle = (timeframe, metricLabel) => {
     if (timeframe === 'Hourly') return `Last 1 Hour ${metricLabel}`;
@@ -461,8 +523,47 @@ const Analysis = () => {
   };
 
   const getTimeframeData = (metricType, timeframe, rawHistory, baseVal) => {
-    // 1. Hourly View (Last 1 Hour in 10-minute intervals up to current minute)
+    // 1. Hourly View (Real-time live telemetry stream or recent window)
     if (timeframe === 'Hourly') {
+      if (Array.isArray(liveReadings) && liveReadings.length > 0) {
+        let relevantReadings = liveReadings;
+        if (selectedMachine && selectedMachine !== 'All') {
+          const target = String(selectedMachine).toLowerCase();
+          const filtered = liveReadings.filter(r => 
+            String(r.machineId).toLowerCase() === target ||
+            String(r.machineId).toLowerCase().replace(/o/g, '0') === target.replace(/o/g, '0')
+          );
+          if (filtered.length > 0) relevantReadings = filtered;
+        }
+
+        // Take up to 20 recent points, sort chronologically
+        const recent = relevantReadings.slice(0, 20).reverse();
+        return recent.map(r => {
+          const d = new Date(r.timestamp);
+          const timeLabel = isNaN(d.getTime())
+            ? String(r.timestamp).slice(11, 19)
+            : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+          let val = 0;
+          if (metricType === 'temp') val = Number(r.temp) || 0;
+          else if (metricType === 'humidity') val = Number(r.humidity) || 0;
+          else if (metricType === 'odour') val = Number(r.vocGas) || 0;
+          else if (metricType === 'water') val = Number(r.water) < 10 ? 1 : 0;
+          else if (metricType === 'usage') val = 1;
+
+          if (metricType === 'odour') {
+            return {
+              date: timeLabel,
+              value: val,
+              odour: val,
+              nh3: Number(r.nh3) || 0,
+              h2s: Number(r.h2s) || 0
+            };
+          }
+          return { date: timeLabel, value: val };
+        });
+      }
+
       const now = new Date();
       const points = [];
       for (let i = 6; i >= 0; i--) {
@@ -697,7 +798,7 @@ const Analysis = () => {
           icon: <CloudRain size={24} color={GREEN_COLOR} />,
           badge: null,
           data: displayedHumidityData,
-          yDomain: [0, 100],
+          yDomain: [0, 'auto'],
           yUnit: '%',
           tooltipFormatter: (val) => [`${val}%`, 'Humidity']
         };
@@ -708,7 +809,7 @@ const Analysis = () => {
           icon: <Wind size={24} color={GREEN_COLOR} />,
           badge: null,
           data: displayedOdourData,
-          yDomain: [0, 100],
+          yDomain: [0, 'auto'],
           yUnit: ' PPM',
           isMultiLine: true,
           tooltipFormatter: (val, name) => [`${val} PPM`, name]
@@ -1437,7 +1538,7 @@ const Analysis = () => {
                     <LineChart data={displayedOdourData} margin={{ top: 10, right: 15, left: -20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.6} />
                       <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 500 }} />
-                      <YAxis domain={[0, 100]} unit="P" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
+                      <YAxis domain={[0, 'auto']} unit=" PPM" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                       <RechartsTooltip cursor={{ stroke: 'rgba(16, 185, 129, 0.4)', strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: 'var(--surface-bg)', borderRadius: '8px', border: '1px solid var(--border-color)', color: 'var(--text-primary)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} labelFormatter={(label) => `Time/Date: ${label}`} formatter={(val, name) => [`${val} PPM`, name]} />
                       <Line type="monotone" name="Odour" dataKey="odour" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.5 }} activeDot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} />
                       <Line type="monotone" name="NH3" dataKey="nh3" stroke="#0284c7" strokeWidth={2.5} dot={{ r: 3, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 1.5 }} activeDot={{ r: 5, fill: '#0369a1', stroke: '#ffffff', strokeWidth: 2 }} />

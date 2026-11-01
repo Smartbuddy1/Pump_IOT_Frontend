@@ -114,11 +114,13 @@ const Reports = () => {
       setReportData(prevData => {
         if (!Array.isArray(prevData) || prevData.length === 0) return prevData;
 
+        const todayDateFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
         // Check if row for this machine today exists
         const rowIndex = prevData.findIndex(r => 
           (String(r.machineId).toLowerCase() === incomingMachId.toLowerCase() ||
-           String(r.rawMachineId || '').toLowerCase() === incomingMachId.toLowerCase()) &&
-          (r.date === todayYMD || String(r.date).includes(todayYMD))
+           String(r.rawMachineId || '').toLowerCase() === incomingMachId.toLowerCase() ||
+           String(r.machineId).toLowerCase().replace(/o/g, '0') === incomingMachId.toLowerCase().replace(/o/g, '0')) &&
+          (r.date_ymd === todayYMD || r.date === todayYMD || String(r.date).toLowerCase() === todayDateFormatted.toLowerCase() || String(r.date).includes(todayYMD))
         );
 
         const newTemp = parseFloat(data.temperature) || 0;
@@ -639,6 +641,7 @@ const Reports = () => {
           const formatted = liveRows.map(r => ({
             machineId: r.machineId,
             date: r.date,
+            date_ymd: r.date_ymd || r.raw_date,
             omcName: r.omcName || getOmcName(null, { name: r.machineId }),
             roName: r.roName || 'RO Location',
             tempMin: Number(r.tempMin) || 0,
