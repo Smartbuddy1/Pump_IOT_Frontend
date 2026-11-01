@@ -1,18 +1,32 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const getSocketUrl = () => {
-  if (typeof window !== 'undefined' && import.meta.env.DEV) {
-    return window.location.origin;
+const getSocketConfig = () => {
+  let url = 'http://localhost:5000';
+  let path = '/socket.io';
+
+  if (typeof window !== 'undefined') {
+    url = window.location.origin;
+    const isP2t = window.location.pathname.startsWith('/p2t') || 
+                  (import.meta.env.VITE_API_BASE_URL || '').includes('p2t-backend') ||
+                  (import.meta.env.VITE_SERVER_URL || '').includes('p2t-backend');
+    if (isP2t) {
+      path = '/p2t-backend/socket.io';
+    }
+  } else {
+    const envUrl = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_API_BASE_URL;
+    if (envUrl && !envUrl.startsWith('/')) {
+      url = envUrl.replace(/\/api\/v1\/?$/, '');
+    }
   }
-  const envUrl = import.meta.env.VITE_SERVER_URL || import.meta.env.VITE_API_BASE_URL;
-  if (!envUrl || envUrl.startsWith('/')) {
-    return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000';
-  }
-  return envUrl.replace('/api/v1', '');
+
+  return { url, path };
 };
 
-export const socket = io(getSocketUrl(), {
+const { url: socketUrl, path: socketPath } = getSocketConfig();
+
+export const socket = io(socketUrl, {
+  path: socketPath,
   autoConnect: false,
   withCredentials: true,
   transports: ['websocket', 'polling']
@@ -72,4 +86,3 @@ export const useSocket = () => {
 
   return { socket, isConnected };
 };
-

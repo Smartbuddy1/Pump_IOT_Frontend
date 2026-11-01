@@ -119,13 +119,17 @@ function AppContent() {
                 <Route path="readings" element={<Readings />} />
                 <Route path="omc-dashboard" element={<OMCDashboard />} />
                 <Route path="omc" element={<CreateOMC />} />
+                <Route path="create-omc" element={<CreateOMC />} />
                 <Route path="ro" element={<CreateRO />} />
+                <Route path="create-ro" element={<CreateRO />} />
                 <Route path="machine" element={<Machines />} />
+                <Route path="machines" element={<Machines />} />
                 <Route path="alerts" element={<Alerts />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="analysis" element={<Analysis />} />
                 <Route path="diagnosis" element={<Diagnosis />} />
                 <Route path="feedbacks" element={<FeedbackLogs />} />
+                <Route path="feedback-logs" element={<FeedbackLogs />} />
               </Route>
               
               {/* Fallback - unauthenticated users go to login */}
