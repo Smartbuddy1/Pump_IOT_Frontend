@@ -298,7 +298,7 @@ const ReadingsContent = () => {
       alert('No readings available to export.');
       return;
     }
-    const columns = ['#', 'TIMESTAMP', 'MACHINE ID', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC GAS (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'INTERVAL'];
+    const columns = ['#', 'TIMESTAMP', 'MACHINE ID', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC GAS (PPM)', 'NH3 (PPM)', 'H2S (PPM)'];
     const rows = filteredReadings.map((r, i) => {
       const dt = formatDate(r.timestamp);
       return [
@@ -309,8 +309,7 @@ const ReadingsContent = () => {
         `${r.humidity ?? '-'}%`,
         `${r.vocGas ?? '-'} PPM`,
         `${r.nh3 ?? '-'} PPM`,
-        `${r.h2s ?? '-'} PPM`,
-        '30s Stream'
+        `${r.h2s ?? '-'} PPM`
       ];
     });
 
@@ -330,10 +329,10 @@ const ReadingsContent = () => {
       alert('No readings available to export.');
       return;
     }
-    const headers = ['Index,Timestamp,MachineID,Temperature_C,Humidity_Percent,VOC_Gas_PPM,NH3_PPM,H2S_PPM,Interval'];
+    const headers = ['Index,Timestamp,MachineID,Temperature_C,Humidity_Percent,VOC_Gas_PPM,NH3_PPM,H2S_PPM'];
     const csvRows = filteredReadings.map((r, i) => {
       const dt = formatDate(r.timestamp);
-      return `${i + 1},"${dt.date} ${dt.time}",${r.machineId || 'SBE20001'},${r.temp ?? ''},${r.humidity ?? ''},${r.vocGas ?? ''},${r.nh3 ?? ''},${r.h2s ?? ''},30s`;
+      return `${i + 1},"${dt.date} ${dt.time}",${r.machineId || 'SBE20001'},${r.temp ?? ''},${r.humidity ?? ''},${r.vocGas ?? ''},${r.nh3 ?? ''},${r.h2s ?? ''}`;
     });
     const blob = new Blob([[headers, ...csvRows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -389,7 +388,7 @@ const ReadingsContent = () => {
         boxShadow: '0 8px 24px -6px rgba(16, 185, 129, 0.15)'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{ 
               background: '#10b981', 
               color: 'white', 
@@ -443,9 +442,7 @@ const ReadingsContent = () => {
               </span>
             </h1>
           </div>
-          <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem', fontWeight: '500' }}>
-            PCB कडून दर 30 सेकंदाला थेट MQTT (<code style={{ color: '#059669', fontWeight: '700' }}>petroleum</code> topic) वरून डेटा अपडेट होत आहे.
-          </p>
+
         </div>
 
         {/* Live Packet Sync Counter */}
@@ -757,13 +754,12 @@ const ReadingsContent = () => {
                 <th style={{ padding: '1rem', fontWeight: '700', color: '#059669', textAlign: 'center' }}>VOC GAS (PPM)</th>
                 <th style={{ padding: '1rem', fontWeight: '700', color: '#0284c7', textAlign: 'center' }}>NH3 (PPM)</th>
                 <th style={{ padding: '1rem', fontWeight: '700', color: '#7c3aed', textAlign: 'center' }}>H2S (PPM)</th>
-                <th style={{ padding: '1rem', fontWeight: '700', color: '#10b981', textAlign: 'center' }}>STATUS / CYCLE</th>
               </tr>
             </thead>
             <tbody>
               {loading && readings.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="8" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
                       <RefreshCw size={20} className="animate-spin" color="#10b981" />
                       Loading 2-day PCB telemetry stream...
@@ -896,50 +892,12 @@ const ReadingsContent = () => {
                           {r.h2s ?? '-'} <span style={{ fontSize: '0.72rem' }}>PPM</span>
                         </span>
                       </td>
-
-                      {/* Interval / Status */}
-                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        {r.isLiveStream ? (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '0.28rem 0.75rem',
-                            borderRadius: '9999px',
-                            fontWeight: '800',
-                            fontSize: '0.78rem',
-                            backgroundColor: 'rgba(16, 185, 129, 0.22)',
-                            color: '#059669',
-                            border: '1.5px solid #10b981',
-                            boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)'
-                          }}>
-                            <span className="live-dot" style={{ width: '7px', height: '7px' }}></span>
-                            ● Live PCB
-                          </span>
-                        ) : (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '0.25rem 0.65rem',
-                            borderRadius: '9999px',
-                            fontWeight: '700',
-                            fontSize: '0.75rem',
-                            backgroundColor: 'rgba(100, 116, 139, 0.1)',
-                            color: 'var(--text-secondary)',
-                            border: '1px solid rgba(100, 116, 139, 0.2)'
-                          }}>
-                            <Clock size={12} />
-                            Historical (30s)
-                          </span>
-                        )}
-                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan="9" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="8" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     No readings found matching "{searchTerm}"
                   </td>
                 </tr>
