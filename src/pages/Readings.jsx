@@ -87,7 +87,7 @@ const ReadingsContent = () => {
     try {
       setLoading(true);
       const res = await api.get('/analytics/readings', {
-        params: { days: 3, limit: 6000 }
+        params: { days: 'all', limit: 'all' }
       });
       if (res.data?.success && Array.isArray(res.data.data)) {
         setReadings(res.data.data);
@@ -152,7 +152,7 @@ const ReadingsContent = () => {
       };
 
       // Cap memory array to 2000 items so browser never runs out of memory or crashes
-      setReadings(prev => [newEntry, ...(Array.isArray(prev) ? prev : [])].slice(0, 2000));
+      setReadings(prev => [newEntry, ...(Array.isArray(prev) ? prev : [])]);
       setSecondsSinceLastPacket(0);
 
       // If user is on page > 1, notify them instead of abruptly moving their scroll
