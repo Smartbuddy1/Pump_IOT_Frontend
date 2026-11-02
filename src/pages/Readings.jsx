@@ -73,6 +73,7 @@ const ReadingsContent = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [jumpPageInput, setJumpPageInput] = useState('');
+  const [dayFilter, setDayFilter] = useState('All'); // 'All' | 'Today' | 'Yesterday'
 
   // Unread live packets indicator if user is viewing older pages
   const [unreadLiveCount, setUnreadLiveCount] = useState(0);
@@ -86,7 +87,7 @@ const ReadingsContent = () => {
     try {
       setLoading(true);
       const res = await api.get('/analytics/readings', {
-        params: { days: 2, limit: 1500 }
+        params: { days: 3, limit: 6000 }
       });
       if (res.data?.success && Array.isArray(res.data.data)) {
         setReadings(res.data.data);
@@ -193,6 +194,29 @@ const ReadingsContent = () => {
     return Array.from(set);
   }, [readings]);
 
+  // Safe date-wise counts for Today and Yesterday
+  const dateCounts = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    let todayCount = 0;
+    let yesterdayCount = 0;
+    if (Array.isArray(readings)) {
+      readings.forEach(r => {
+        if (!r || !r.timestamp) return;
+        const d = new Date(r.timestamp);
+        if (isNaN(d.getTime())) return;
+        const str = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        if (str === todayStr) todayCount++;
+        else if (str === yesterdayStr) yesterdayCount++;
+      });
+    }
+    return { todayStr, yesterdayStr, todayCount, yesterdayCount };
+  }, [readings]);
+
   // Safe filtered readings
   const filteredReadings = useMemo(() => {
     if (!Array.isArray(readings)) return [];
@@ -200,6 +224,17 @@ const ReadingsContent = () => {
       if (!r) return false;
       if (selectedMachine !== 'All' && String(r.machineId || '').toLowerCase() !== selectedMachine.toLowerCase()) {
         return false;
+      }
+      if (dayFilter === 'Today') {
+        const d = new Date(r.timestamp);
+        if (!isNaN(d.getTime()) && d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) !== dateCounts.todayStr) {
+          return false;
+        }
+      } else if (dayFilter === 'Yesterday') {
+        const d = new Date(r.timestamp);
+        if (!isNaN(d.getTime()) && d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) !== dateCounts.yesterdayStr) {
+          return false;
+        }
       }
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
@@ -213,7 +248,7 @@ const ReadingsContent = () => {
       }
       return true;
     });
-  }, [readings, selectedMachine, searchTerm]);
+  }, [readings, selectedMachine, dayFilter, dateCounts, searchTerm]);
 
   // Total pages calculation with safety check
   const totalPages = Math.max(1, Math.ceil(filteredReadings.length / itemsPerPage));
@@ -614,6 +649,29 @@ const ReadingsContent = () => {
             ))}
           </select>
 
+          {/* Date Filter */}
+          <select
+            value={dayFilter}
+            onChange={(e) => {
+              setDayFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '0.55rem 0.85rem',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--hover-bg, #f8fafc)',
+              color: 'var(--text-primary)',
+              fontSize: '0.88rem',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="All">All Dates ({readings.length})</option>
+            <option value="Today">Today ({dateCounts.todayCount})</option>
+            <option value="Yesterday">Yesterday ({dateCounts.yesterdayCount})</option>
+          </select>
+
           {/* Rows per page selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
             <span style={{ fontWeight: '600' }}>Show:</span>
@@ -898,7 +956,7 @@ const ReadingsContent = () => {
         }}>
           {/* Total Count Info */}
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '500' }}>
-            Showing <b>{filteredReadings.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</b> to <b>{Math.min(filteredReadings.length, currentPage * itemsPerPage)}</b> of <b>{filteredReadings.length}</b> total 2-day PCB readings
+            Showing <b>{filteredReadings.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</b> to <b>{Math.min(filteredReadings.length, currentPage * itemsPerPage)}</b> of <b>{filteredReadings.length}</b> total PCB readings ({dayFilter === 'All' ? 'Last 2 Days' : dayFilter})
           </div>
 
           {/* Pagination Navigation & Jump Form */}
