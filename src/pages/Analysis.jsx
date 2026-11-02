@@ -3,11 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import {
   Download, Filter,
   Thermometer, CloudRain, Wind, Droplets, Users, Maximize2, X, Calendar,
-  TrendingUp, TrendingDown, Activity, Clock, ShieldCheck, Zap
+  TrendingUp, TrendingDown, Activity, Clock, Zap
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine
+  Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine, Brush
 } from 'recharts';
 import api from '../services/api';
 import { socket } from '../hooks/useSocket';
@@ -30,15 +30,15 @@ const StockTooltip = ({ active, payload, label, unit = '', metricName = '', benc
       boxShadow: '0 12px 30px -5px rgba(0, 0, 0, 0.5)',
       color: '#f8fafc',
       fontSize: '0.8rem',
-      minWidth: '180px',
+      minWidth: '200px',
       zIndex: 100
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.12)', paddingBottom: '0.35rem', marginBottom: '0.5rem' }}>
-        <span style={{ color: '#94a3b8', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '500' }}>
+        <span style={{ color: '#94a3b8', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '600' }}>
           <Clock size={12} /> {label}
         </span>
         {benchmark && (
-          <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700', padding: '1px 5px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)' }}>
+          <span style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.18)' }}>
             {benchmark}
           </span>
         )}
@@ -87,6 +87,57 @@ const calcStats = (data, key = 'value') => {
   return { current, min, max, avg, change, changePct, isPositive: change >= 0 };
 };
 
+// Downsample array evenly if point count > maxPoints for 60 FPS smooth rendering
+const sampleData = (arr, maxPoints = 250) => {
+  if (!Array.isArray(arr) || arr.length <= maxPoints) return arr;
+  const step = Math.ceil(arr.length / maxPoints);
+  const sampled = [];
+  for (let i = 0; i < arr.length; i += step) {
+    sampled.push(arr[i]);
+  }
+  // Ensure the latest live point is always preserved at the tail
+  if (arr.length > 0 && sampled[sampled.length - 1] !== arr[arr.length - 1]) {
+    sampled.push(arr[arr.length - 1]);
+  }
+  return sampled;
+};
+
+// Format raw telemetry reading into clean chart point
+const formatTelemetryPoint = (r, metricType, mode = 'full') => {
+  const d = new Date(r.timestamp);
+  const isValid = !isNaN(d.getTime());
+  const dateStr = isValid ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
+  const timeStr = isValid ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '';
+  
+  // mode === 'time': "12:10:52 PM", mode === 'full': "01 Nov 02:15 PM"
+  const label = mode === 'time' ? timeStr : `${dateStr} ${timeStr}`.trim();
+
+  let val = 0;
+  if (metricType === 'temp') val = Number(r.temp) || 0;
+  else if (metricType === 'humidity') val = Number(r.humidity) || 0;
+  else if (metricType === 'odour') val = Number(r.vocGas) || 0;
+  else if (metricType === 'water') val = Number(r.water) < 10 ? 1 : 0;
+  else if (metricType === 'usage') val = 1;
+
+  if (metricType === 'odour') {
+    return {
+      date: label,
+      time: timeStr,
+      dateStr,
+      value: val,
+      odour: val,
+      nh3: Number(r.nh3) || 0,
+      h2s: Number(r.h2s) || 0
+    };
+  }
+  return {
+    date: label,
+    time: timeStr,
+    dateStr,
+    value: val
+  };
+};
+
 const Analysis = () => {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'Super Admin';
@@ -101,7 +152,7 @@ const Analysis = () => {
   const userOmcId = user?.omcId || user?.omc_id;
   const [filterType, setFilterType] = useState('Financial Year');
   const [financialYear, setFinancialYear] = useState('Current FY (2026-27)');
-  const [selectedTimeframe, setSelectedTimeframe] = useState('Hourly');
+  const [selectedTimeframe, setSelectedTimeframe] = useState('2D');
   const [omcs, setOmcs] = useState([]);
   const [ros, setRos] = useState([]);
   const [machines, setMachines] = useState([]);
@@ -110,13 +161,13 @@ const Analysis = () => {
   const [filterApplied, setFilterApplied] = useState(true);
   const [fullscreenGraph, setFullscreenGraph] = useState(null); // 'temp' | 'humidity' | 'odour' | 'water' | 'usage' | null
   
-  // Independent timeframe per graph card: 'Hourly', 'Today', 'Weekly', 'Monthly'
+  // Independent timeframe per graph card: '2D' (default: full continuous stream with timeline scroller)
   const [chartTimeframes, setChartTimeframes] = useState({
-    temp: 'Hourly',
-    humidity: 'Hourly',
-    odour: 'Hourly',
-    water: 'Hourly',
-    usage: 'Hourly'
+    temp: '2D',
+    humidity: '2D',
+    odour: '2D',
+    water: '2D',
+    usage: '2D'
   });
 
   // Dynamic default dates (last 7 days)
@@ -204,7 +255,7 @@ const Analysis = () => {
         timestamp: data.timestamp || new Date().toISOString()
       };
 
-      setLiveReadings(prev => [newReading, ...(Array.isArray(prev) ? prev.slice(0, 49) : [])]);
+      setLiveReadings(prev => [newReading, ...(Array.isArray(prev) ? prev : [])]);
 
       // Update machine live state
       setMachines(prev => (Array.isArray(prev) ? prev : []).map(m => {
@@ -357,6 +408,7 @@ const Analysis = () => {
     return result;
   };
 
+  // Fetch all analytics and complete historical telemetry from backend
   const fetchAnalytics = async (customMachine, customFrom, customTo, mList = machines, customRo = selectedRo) => {
     try {
       const params = {};
@@ -371,7 +423,7 @@ const Analysis = () => {
 
       const [res, readingsRes] = await Promise.all([
         api.get('/analytics/history', { params }).catch(() => ({ data: { data: [] } })),
-        api.get('/analytics/readings', { params: { ...params, limit: 100 } }).catch(() => ({ data: { data: [] } }))
+        api.get('/analytics/readings', { params: { ...params, days: 'all', limit: 'all' } }).catch(() => ({ data: { data: [] } }))
       ]);
 
       const rawReadings = readingsRes.data?.data || [];
@@ -567,8 +619,10 @@ const Analysis = () => {
   }, [filteredMachinesForDropdown, selectedMachine, machines, liveReadings]);
 
   const getTimeframeSubtitle = (timeframe, metricLabel) => {
-    if (timeframe === 'Hourly') return `Last 1 Hour (${metricLabel})`;
-    if (timeframe === 'Today') return `Today's 24H Trend (${metricLabel})`;
+    if (timeframe === '1H') return `Last 1 Hour (${metricLabel})`;
+    if (timeframe === 'Today') return `Today's Telemetry Stream (${metricLabel})`;
+    if (timeframe === 'Yesterday') return `Yesterday's Telemetry (from 2:15 PM) (${metricLabel})`;
+    if (timeframe === '2D') return `2-Day Full Telemetry Timeline (${metricLabel})`;
     if (timeframe === 'Weekly') return `Last 7 Days Trend (${metricLabel})`;
     if (timeframe === 'Monthly') return `Monthly Aggregates (${metricLabel})`;
     if (timeframe === 'FY') return `Financial Year Performance (${metricLabel})`;
@@ -576,139 +630,72 @@ const Analysis = () => {
   };
 
   const getTimeframeData = (metricType, timeframe, rawHistory, baseVal) => {
-    // 1. Hourly View (Real-time live telemetry stream or recent window)
-    if (timeframe === 'Hourly') {
-      if (Array.isArray(liveReadings) && liveReadings.length > 0) {
-        let relevantReadings = liveReadings;
-        if (selectedMachine && selectedMachine !== 'All') {
-          const target = String(selectedMachine).toLowerCase();
-          const filtered = liveReadings.filter(r => 
-            String(r.machineId).toLowerCase() === target ||
-            String(r.machineId).toLowerCase().replace(/o/g, '0') === target.replace(/o/g, '0')
-          );
-          if (filtered.length > 0) relevantReadings = filtered;
-        }
-
-        const recent = relevantReadings.slice(0, 16).reverse();
-        return recent.map(r => {
-          const d = new Date(r.timestamp);
-          const timeLabel = isNaN(d.getTime())
-            ? String(r.timestamp).slice(11, 19)
-            : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-
-          let val = 0;
-          if (metricType === 'temp') val = Number(r.temp) || 30;
-          else if (metricType === 'humidity') val = Number(r.humidity) || 52;
-          else if (metricType === 'odour') val = Number(r.vocGas) || 1098;
-          else if (metricType === 'water') val = Number(r.water) < 10 ? 1 : 0;
-          else if (metricType === 'usage') val = 1;
-
-          if (metricType === 'odour') {
-            return {
-              date: timeLabel,
-              value: val,
-              odour: val,
-              nh3: Number(r.nh3) || 825,
-              h2s: Number(r.h2s) || 1055
-            };
-          }
-          return { date: timeLabel, value: val };
-        });
-      }
-
-      const now = new Date();
-      const points = [];
-      for (let i = 7; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 8 * 60 * 1000);
-        const timeLabel = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        points.push({ timeLabel, idx: 7 - i });
-      }
-
-      return points.map(({ timeLabel, idx }) => {
-        const isCurrent = idx === 7;
-        let val = baseVal;
-        if (metricType === 'temp') {
-          const drift = isCurrent ? 0 : ([-0.4, -0.2, 0.2, -0.1, 0.3, 0.1, 0.2, 0][idx] ?? 0);
-          val = Math.round((baseVal + drift) * 10) / 10;
-        } else if (metricType === 'humidity') {
-          const drift = isCurrent ? 0 : ([1, 2, 1, -1, 0, 1, 0, 0][idx] ?? 0);
-          val = Math.max(25, Math.min(95, Math.round(baseVal + drift)));
-        } else if (metricType === 'odour') {
-          const drift = isCurrent ? 0 : ([-6, 4, -3, 5, -2, 3, -1, 0][idx] ?? 0);
-          val = Math.max(10, Math.round(baseVal + drift));
-        } else if (metricType === 'water') {
-          val = baseVal > 0 ? (idx === 7 ? 1 : 0) : 0;
-        } else if (metricType === 'usage') {
-          val = idx % 2 === 0 ? 3 : 1;
-        }
-
-        if (metricType === 'odour') {
-          const nh3Val = baseLiveValues.nh3 || 825;
-          const h2sVal = baseLiveValues.h2s || 1055;
-          return { date: timeLabel, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
-        }
-        return { date: timeLabel, value: val };
-      });
+    let relevantReadings = liveReadings;
+    if (selectedMachine && selectedMachine !== 'All') {
+      const target = String(selectedMachine).toLowerCase();
+      const filtered = liveReadings.filter(r => 
+        String(r.machineId).toLowerCase() === target ||
+        String(r.machineId).toLowerCase().replace(/o/g, '0') === target.replace(/o/g, '0')
+      );
+      if (filtered.length > 0) relevantReadings = filtered;
     }
 
-    // 2. Today View (Hours 00:00 to current hour)
+    const todayDate = new Date();
+    const todayStr = todayDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const yestDate = new Date();
+    yestDate.setDate(yestDate.getDate() - 1);
+    const yesterdayStr = yestDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    // 1. Hourly View (Last 1 hour of live 30s packets)
+    if (timeframe === '1H') {
+      if (Array.isArray(relevantReadings) && relevantReadings.length > 0) {
+        const recent = relevantReadings.slice(0, 120).reverse();
+        return recent.map(r => formatTelemetryPoint(r, metricType, 'time'));
+      }
+    }
+
+    // 2. Today View (All readings belonging to today, 00:00 to now)
     if (timeframe === 'Today') {
-      const now = new Date();
-      const currentHour = now.getHours();
-
-      const hoursList = [];
-      const step = currentHour <= 6 ? 1 : 2;
-      for (let h = 0; h <= currentHour; h += step) {
-        hoursList.push(h);
-      }
-      if (!hoursList.includes(currentHour)) {
-        hoursList.push(currentHour);
-      }
-
-      const getTempOffset = (h) => {
-        const t = [-2, -2, -3, -3, -3, -2, -1, 0, 1, 2, 2.5, 3, 3, 2.5, 2, 1.5, 1, 0, -1, -1, -1.5, -2, -2, -2];
-        return t[h] ?? 0;
-      };
-      const getHumOffset = (h) => {
-        const t = [6, 6, 7, 7, 7, 5, 3, 1, 0, -2, -3, -5, -6, -6, -5, -4, -2, 0, 2, 3, 4, 5, 5, 6];
-        return t[h] ?? 0;
-      };
-
-      const currTempOff = getTempOffset(currentHour);
-      const currHumOff = getHumOffset(currentHour);
-
-      const usageWeights = hoursList.map(h => (h >= 8 && h <= 20 ? 3 : 1));
-      const totalWeight = usageWeights.reduce((a, b) => a + b, 0) || 1;
-
-      return hoursList.map((hour, idx) => {
-        const isCurrent = hour === currentHour;
-        const hourLabel = `${String(hour).padStart(2, '0')}:00`;
-        let val = baseVal;
-
-        if (metricType === 'temp') {
-          const diff = isCurrent ? 0 : (getTempOffset(hour) - currTempOff);
-          val = Math.round((baseVal + diff) * 10) / 10;
-        } else if (metricType === 'humidity') {
-          const diff = isCurrent ? 0 : (getHumOffset(hour) - currHumOff);
-          val = Math.max(25, Math.min(95, Math.round(baseVal + diff)));
-        } else if (metricType === 'odour') {
-          val = Math.max(10, Math.round(baseVal + ((idx % 3) - 1) * 3));
-        } else if (metricType === 'water') {
-          val = baseVal > 0 ? (isCurrent ? 1 : (idx % 3 === 0 ? 1 : 0)) : 0;
-        } else if (metricType === 'usage') {
-          val = Math.round((usageWeights[idx] / totalWeight) * (baseVal || 120));
+      if (Array.isArray(relevantReadings) && relevantReadings.length > 0) {
+        const todayItems = relevantReadings
+          .filter(r => {
+            const d = new Date(r.timestamp);
+            return !isNaN(d.getTime()) && d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) === todayStr;
+          })
+          .reverse();
+        if (todayItems.length > 0) {
+          const sampled = sampleData(todayItems, 250);
+          return sampled.map(r => formatTelemetryPoint(r, metricType, 'time'));
         }
-
-        if (metricType === 'odour') {
-          const nh3Val = Math.round((baseLiveValues.nh3 || 825) + ((idx % 3) - 1) * 4);
-          const h2sVal = Math.round((baseLiveValues.h2s || 1055) + ((idx % 2 === 0 ? 1 : -1) * 3));
-          return { date: hourLabel, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
-        }
-        return { date: hourLabel, value: val };
-      });
+      }
     }
 
-    // 3. Weekly View (Last 7 Days)
+    // 3. Yesterday View (All readings belonging to yesterday from 2:15 PM onwards)
+    if (timeframe === 'Yesterday') {
+      if (Array.isArray(relevantReadings) && relevantReadings.length > 0) {
+        const yesterdayItems = relevantReadings
+          .filter(r => {
+            const d = new Date(r.timestamp);
+            return !isNaN(d.getTime()) && d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) === yesterdayStr;
+          })
+          .reverse();
+        if (yesterdayItems.length > 0) {
+          const sampled = sampleData(yesterdayItems, 250);
+          return sampled.map(r => formatTelemetryPoint(r, metricType, 'full'));
+        }
+      }
+    }
+
+    // 4. 2D / All View (Full continuous timeline from yesterday 2:15 PM to right now)
+    if (timeframe === '2D') {
+      if (Array.isArray(relevantReadings) && relevantReadings.length > 0) {
+        const allItems = [...relevantReadings].reverse();
+        const sampled = sampleData(allItems, 300);
+        return sampled.map(r => formatTelemetryPoint(r, metricType, 'full'));
+      }
+    }
+
+    // 5. Weekly View (Last 7 Days)
     if (timeframe === 'Weekly') {
       if (Array.isArray(rawHistory) && rawHistory.length >= 7) {
         return rawHistory.slice(-7);
@@ -738,7 +725,7 @@ const Analysis = () => {
       });
     }
 
-    // 4. Monthly View / FY
+    // 6. Monthly View / FY
     if (timeframe === 'Monthly' || timeframe === 'FY') {
       if (timeframe === 'FY' || filterType === 'Financial Year') {
         const fyMonths = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
@@ -826,7 +813,7 @@ const Analysis = () => {
       case 'temp':
         return {
           title: 'Temperature Trend (Temp °C)',
-          subtitle: getTimeframeSubtitle(chartTimeframes.temp, 'Real-time Ambient Temperature in °C'),
+          subtitle: getTimeframeSubtitle(chartTimeframes.temp, 'Ambient Temperature in °C'),
           icon: <Thermometer size={22} color="#10b981" />,
           color: '#10b981',
           gradientId: 'modalTempGrad',
@@ -843,7 +830,7 @@ const Analysis = () => {
       case 'humidity':
         return {
           title: 'Humidity Trend (RH %)',
-          subtitle: getTimeframeSubtitle(chartTimeframes.humidity, 'Relative Ambient Humidity in %'),
+          subtitle: getTimeframeSubtitle(chartTimeframes.humidity, 'Relative Humidity in %'),
           icon: <CloudRain size={22} color="#0284c7" />,
           color: '#0284c7',
           gradientId: 'modalHumGrad',
@@ -877,7 +864,7 @@ const Analysis = () => {
       case 'water':
         return {
           title: 'Water Supply & Low Alerts',
-          subtitle: getTimeframeSubtitle(chartTimeframes.water, 'Water Tank Level & Replenishment Alerts'),
+          subtitle: getTimeframeSubtitle(chartTimeframes.water, 'Water Level & Tank Alerts'),
           icon: <Droplets size={22} color="#3b82f6" />,
           color: '#3b82f6',
           gradientId: 'modalWaterGrad',
@@ -983,11 +970,13 @@ const Analysis = () => {
     }
   };
 
-  // Helper for Timeframe pill buttons
+  // Helper for Timeframe pill buttons with Yesterday & 2D Scroller support
   const renderTimeframePills = (metricKey, activeColor = '#10b981') => {
     const timeframes = [
-      { key: 'Hourly', label: '1H' },
-      { key: 'Today', label: '24H' },
+      { key: '1H', label: '1H' },
+      { key: 'Today', label: 'Today' },
+      { key: 'Yesterday', label: 'Yesterday' },
+      { key: '2D', label: '2D (All)' },
       { key: 'Weekly', label: '7D' },
       { key: 'Monthly', label: '30D' },
       { key: 'FY', label: 'FY' }
@@ -1002,7 +991,8 @@ const Analysis = () => {
           padding: '2px',
           borderRadius: '8px',
           border: '1px solid var(--border-color)',
-          gap: '2px'
+          gap: '2px',
+          flexWrap: 'wrap'
         }}
       >
         {timeframes.map(({ key, label }) => {
@@ -1024,7 +1014,8 @@ const Analysis = () => {
                 borderRadius: '6px',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-                boxShadow: isActive ? '0 2px 6px rgba(0,0,0,0.15)' : 'none'
+                boxShadow: isActive ? '0 2px 6px rgba(0,0,0,0.15)' : 'none',
+                whiteSpace: 'nowrap'
               }}
             >
               {label}
@@ -1091,7 +1082,7 @@ const Analysis = () => {
             Graphical Analytics
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0.2rem 0 0 0' }}>
-            Live IoT Sensor Telemetry & Share Market Trends Dashboard
+            Interactive Share Market Style Telemetry with Live Timeline Scroller (Yesterday & Today)
           </p>
         </div>
 
@@ -1292,8 +1283,10 @@ const Analysis = () => {
               }}
               style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.88rem' }}
             >
-              <option value="Hourly">Hourly (1H)</option>
-              <option value="Today">Today (24H)</option>
+              <option value="2D">2-Day Stream (Scroller)</option>
+              <option value="Yesterday">Yesterday Only</option>
+              <option value="Today">Today Only</option>
+              <option value="1H">Last 1 Hour (1H)</option>
               <option value="Weekly">Weekly (7D)</option>
               <option value="Monthly">Monthly (30D)</option>
               <option value="FY">Financial Year (FY)</option>
@@ -1313,7 +1306,7 @@ const Analysis = () => {
         </div>
       </div>
 
-      {/* SHARE MARKET TICKER BAR (Zerodha / TradingView Style Live Summary Strip) */}
+      {/* SHARE MARKET TICKER BAR (Live Summary Strip) */}
       <div className="no-print" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
@@ -1417,7 +1410,7 @@ const Analysis = () => {
         </div>
       </div>
 
-      {/* GRAPHS GRID (TradingView / Zerodha Inspired High Polish Cards) */}
+      {/* GRAPHS GRID (With Interactive Timeline Scroller on Every Card) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
 
         {/* 1. TEMPERATURE HISTOGRAM / AREA GRAPH */}
@@ -1492,10 +1485,10 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Area Chart */}
-          <div style={{ height: '220px', width: '100%' }}>
+          {/* Area Chart with Brush Scroller */}
+          <div style={{ height: '245px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayedTempData} margin={{ top: 15, right: 10, left: -20, bottom: 2 }}>
+              <AreaChart data={displayedTempData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
@@ -1503,7 +1496,7 @@ const Analysis = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                 <YAxis domain={['dataMin - 2', 'dataMax + 2']} unit="°C" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip content={<StockTooltip unit="°C" metricName="Temperature" benchmark="Normal 20-35°C" />} />
                 
@@ -1518,9 +1511,22 @@ const Analysis = () => {
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#tempGradient)"
-                  dot={{ r: 3, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.5 }}
+                  dot={{ r: 2.5, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.5 }}
                   activeDot={{ r: 6, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }}
                 />
+
+                {displayedTempData.length > 20 && (
+                  <Brush 
+                    dataKey="date" 
+                    height={22} 
+                    stroke="#10b981" 
+                    fill="rgba(16, 185, 129, 0.04)" 
+                    travellerWidth={8} 
+                    tick={false}
+                    startIndex={displayedTempData.length > 50 ? Math.max(0, displayedTempData.length - 50) : 0}
+                    endIndex={displayedTempData.length > 0 ? displayedTempData.length - 1 : 0}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -1598,10 +1604,10 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Area Chart */}
-          <div style={{ height: '220px', width: '100%' }}>
+          {/* Area Chart with Brush Scroller */}
+          <div style={{ height: '245px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayedHumidityData} margin={{ top: 15, right: 10, left: -20, bottom: 2 }}>
+              <AreaChart data={displayedHumidityData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="humGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35} />
@@ -1609,7 +1615,7 @@ const Analysis = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                 <YAxis domain={[0, 100]} unit="%" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip content={<StockTooltip unit="%" metricName="Humidity" benchmark="Comfort 40-65%" />} />
                 
@@ -1624,9 +1630,22 @@ const Analysis = () => {
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#humGradient)"
-                  dot={{ r: 3, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 1.5 }}
+                  dot={{ r: 2.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 1.5 }}
                   activeDot={{ r: 6, fill: '#0369a1', stroke: '#ffffff', strokeWidth: 2 }}
                 />
+
+                {displayedHumidityData.length > 20 && (
+                  <Brush 
+                    dataKey="date" 
+                    height={22} 
+                    stroke="#0284c7" 
+                    fill="rgba(2, 132, 199, 0.04)" 
+                    travellerWidth={8} 
+                    tick={false}
+                    startIndex={displayedHumidityData.length > 50 ? Math.max(0, displayedHumidityData.length - 50) : 0}
+                    endIndex={displayedHumidityData.length > 0 ? displayedHumidityData.length - 1 : 0}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -1703,10 +1722,10 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Multi-Area Gas Chart */}
-          <div style={{ height: '220px', width: '100%' }}>
+          {/* Multi-Area Gas Chart with Brush Scroller */}
+          <div style={{ height: '245px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayedOdourData} margin={{ top: 15, right: 10, left: -20, bottom: 2 }}>
+              <AreaChart data={displayedOdourData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="odourGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
@@ -1714,16 +1733,29 @@ const Analysis = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                 <YAxis domain={[0, 'auto']} unit=" PPM" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip content={<StockTooltip unit="PPM" multi={true} benchmark="Threshold 70 PPM" />} />
                 
                 {/* Alert Reference Line */}
                 <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1} label={{ value: '🚨 Alert (70 PPM)', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 700 }} />
 
-                <Area type="monotone" name="VOC Odour" dataKey="odour" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#odourGrad)" dot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }} />
-                <Area type="monotone" name="NH3" dataKey="nh3" stroke="#0284c7" strokeWidth={2} fillOpacity={0} fill="none" dot={{ r: 2.5, fill: '#0284c7', stroke: '#fff', strokeWidth: 1 }} />
-                <Area type="monotone" name="H2S" dataKey="h2s" stroke="#8b5cf6" strokeWidth={2} fillOpacity={0} fill="none" dot={{ r: 2.5, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 1 }} />
+                <Area type="monotone" name="VOC Odour" dataKey="odour" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#odourGrad)" dot={{ r: 2.5, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }} />
+                <Area type="monotone" name="NH3" dataKey="nh3" stroke="#0284c7" strokeWidth={2} fillOpacity={0} fill="none" dot={{ r: 2, fill: '#0284c7', stroke: '#fff', strokeWidth: 1 }} />
+                <Area type="monotone" name="H2S" dataKey="h2s" stroke="#8b5cf6" strokeWidth={2} fillOpacity={0} fill="none" dot={{ r: 2, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 1 }} />
+
+                {displayedOdourData.length > 20 && (
+                  <Brush 
+                    dataKey="date" 
+                    height={22} 
+                    stroke="#8b5cf6" 
+                    fill="rgba(139, 92, 246, 0.04)" 
+                    travellerWidth={8} 
+                    tick={false}
+                    startIndex={displayedOdourData.length > 50 ? Math.max(0, displayedOdourData.length - 50) : 0}
+                    endIndex={displayedOdourData.length > 0 ? displayedOdourData.length - 1 : 0}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -1794,10 +1826,10 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Area Chart */}
-          <div style={{ height: '220px', width: '100%' }}>
+          {/* Area Chart with Brush Scroller */}
+          <div style={{ height: '245px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayedWaterData} margin={{ top: 15, right: 10, left: -20, bottom: 2 }}>
+              <AreaChart data={displayedWaterData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
@@ -1805,7 +1837,7 @@ const Analysis = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                 <YAxis allowDecimals={false} domain={[0, 4]} axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip content={<StockTooltip unit="Alerts" metricName="Water Alerts" benchmark="0 Alerts Normal" />} />
                 
@@ -1819,9 +1851,22 @@ const Analysis = () => {
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#waterGrad)"
-                  dot={{ r: 3, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 1.5 }}
+                  dot={{ r: 2.5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 1.5 }}
                   activeDot={{ r: 6, fill: '#1d4ed8', stroke: '#ffffff', strokeWidth: 2 }}
                 />
+
+                {displayedWaterData.length > 20 && (
+                  <Brush 
+                    dataKey="date" 
+                    height={22} 
+                    stroke="#3b82f6" 
+                    fill="rgba(59, 130, 246, 0.04)" 
+                    travellerWidth={8} 
+                    tick={false}
+                    startIndex={displayedWaterData.length > 50 ? Math.max(0, displayedWaterData.length - 50) : 0}
+                    endIndex={displayedWaterData.length > 0 ? displayedWaterData.length - 1 : 0}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -1877,7 +1922,7 @@ const Analysis = () => {
                   <span>•</span>
                   <span>Peak: <strong style={{ color: 'var(--text-primary)' }}>{usageStats.max} Visits</strong></span>
                   <span>•</span>
-                  <span>Peak Hours: <strong style={{ color: '#8b5cf6' }}>11:00 - 14:00</strong></span>
+                  <span>Timeline: <strong style={{ color: '#8b5cf6' }}>Interactive Scroller</strong></span>
                 </div>
               </div>
             </div>
@@ -1894,10 +1939,10 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Area Chart */}
-          <div style={{ height: '220px', width: '100%' }}>
+          {/* Area Chart with Brush Scroller */}
+          <div style={{ height: '245px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayedUsageData} margin={{ top: 15, right: 10, left: -20, bottom: 2 }}>
+              <AreaChart data={displayedUsageData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="usageGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.35} />
@@ -1905,7 +1950,7 @@ const Analysis = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip content={<StockTooltip unit="Visits" metricName="Footfall Usage" benchmark="Active Traffic" />} />
 
@@ -1916,9 +1961,22 @@ const Analysis = () => {
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#usageGrad)"
-                  dot={{ r: 3, fill: '#8b5cf6', stroke: '#ffffff', strokeWidth: 1.5 }}
+                  dot={{ r: 2.5, fill: '#8b5cf6', stroke: '#ffffff', strokeWidth: 1.5 }}
                   activeDot={{ r: 6, fill: '#6d28d9', stroke: '#ffffff', strokeWidth: 2 }}
                 />
+
+                {displayedUsageData.length > 20 && (
+                  <Brush 
+                    dataKey="date" 
+                    height={22} 
+                    stroke="#8b5cf6" 
+                    fill="rgba(139, 92, 246, 0.04)" 
+                    travellerWidth={8} 
+                    tick={false}
+                    startIndex={displayedUsageData.length > 50 ? Math.max(0, displayedUsageData.length - 50) : 0}
+                    endIndex={displayedUsageData.length > 0 ? displayedUsageData.length - 1 : 0}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -1926,7 +1984,7 @@ const Analysis = () => {
 
       </div>
 
-      {/* FULLSCREEN TRADINGVIEW MODAL */}
+      {/* FULLSCREEN TRADINGVIEW MODAL WITH TIMELINE SCROLLER */}
       {fullscreenGraph && (() => {
         const modalData = getFullscreenData();
         if (!modalData) return null;
@@ -1964,7 +2022,7 @@ const Analysis = () => {
               }}
             >
               {/* Fullscreen Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.85rem', gap: '1rem', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <div style={{ padding: '0.65rem', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {modalData.icon}
@@ -1979,7 +2037,7 @@ const Analysis = () => {
                       </span>
                     </div>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem', display: 'block' }}>
-                      {modalData.subtitle} • Benchmark: <b>{modalData.benchmark}</b>
+                      {modalData.subtitle} • Benchmark: <b>{modalData.benchmark}</b> • <b>{modalData.data?.length || 0} Telemetry Points</b>
                     </span>
                   </div>
                 </div>
@@ -2013,10 +2071,10 @@ const Analysis = () => {
                 </div>
               </div>
 
-              {/* Fullscreen Chart Rendering */}
+              {/* Fullscreen Chart Rendering with Brush Scroller */}
               <div style={{ flex: 1, width: '100%', minHeight: 0, padding: '0.5rem 0' }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={modalData.data} margin={{ top: 20, right: 30, left: 10, bottom: 20 }}>
+                  <AreaChart data={modalData.data} margin={{ top: 20, right: 30, left: 10, bottom: 10 }}>
                     <defs>
                       <linearGradient id={modalData.gradientId} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor={modalData.color} stopOpacity={0.38} />
@@ -2024,7 +2082,7 @@ const Analysis = () => {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: 'var(--text-secondary)', fontWeight: 500 }} />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)', fontWeight: 500 }} />
                     <YAxis 
                       domain={modalData.yDomain}
                       unit={modalData.yUnit}
@@ -2048,9 +2106,9 @@ const Analysis = () => {
 
                     {modalData.isMultiLine ? (
                       <>
-                        <Area type="monotone" name="VOC Odour" dataKey="odour" stroke="#10b981" strokeWidth={3.5} fillOpacity={1} fill={`url(#${modalData.gradientId})`} dot={{ r: 4, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
-                        <Area type="monotone" name="NH3 (Ammonia)" dataKey="nh3" stroke="#0284c7" strokeWidth={3} fillOpacity={0} fill="none" dot={{ r: 4, fill: '#0284c7', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
-                        <Area type="monotone" name="H2S (Hydrogen Sulfide)" dataKey="h2s" stroke="#8b5cf6" strokeWidth={3} fillOpacity={0} fill="none" dot={{ r: 4, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
+                        <Area type="monotone" name="VOC Odour" dataKey="odour" stroke="#10b981" strokeWidth={3.5} fillOpacity={1} fill={`url(#${modalData.gradientId})`} dot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }} activeDot={{ r: 7 }} />
+                        <Area type="monotone" name="NH3 (Ammonia)" dataKey="nh3" stroke="#0284c7" strokeWidth={3} fillOpacity={0} fill="none" dot={{ r: 2.5, fill: '#0284c7', stroke: '#fff', strokeWidth: 1 }} activeDot={{ r: 7 }} />
+                        <Area type="monotone" name="H2S (Hydrogen Sulfide)" dataKey="h2s" stroke="#8b5cf6" strokeWidth={3} fillOpacity={0} fill="none" dot={{ r: 2.5, fill: '#8b5cf6', stroke: '#fff', strokeWidth: 1 }} activeDot={{ r: 7 }} />
                       </>
                     ) : (
                       <Area
@@ -2060,8 +2118,22 @@ const Analysis = () => {
                         strokeWidth={3.5}
                         fillOpacity={1}
                         fill={`url(#${modalData.gradientId})`}
-                        dot={{ r: 4, fill: modalData.color, stroke: '#ffffff', strokeWidth: 2 }}
+                        dot={{ r: 3, fill: modalData.color, stroke: '#ffffff', strokeWidth: 2 }}
                         activeDot={{ r: 7, fill: modalData.color, stroke: '#ffffff', strokeWidth: 2 }}
+                      />
+                    )}
+
+                    {/* TradingView Interactive Timeline Scroller */}
+                    {modalData.data && modalData.data.length > 10 && (
+                      <Brush 
+                        dataKey="date" 
+                        height={34} 
+                        stroke={modalData.color} 
+                        fill="rgba(15, 23, 42, 0.05)" 
+                        travellerWidth={14} 
+                        startIndex={modalData.data.length > 50 ? Math.max(0, modalData.data.length - 50) : 0}
+                        endIndex={modalData.data.length > 0 ? modalData.data.length - 1 : 0}
+                        tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 600 }}
                       />
                     )}
                   </AreaChart>
