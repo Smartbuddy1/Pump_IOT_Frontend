@@ -1022,36 +1022,53 @@ const Reports = () => {
       return;
     }
 
+    const isSingleMachine = selectedMachine !== 'All' || (new Set(displayedData.map(r => r.machineId).filter(Boolean)).size <= 1);
+
     let columns = [];
     if (activeTab === 'Sensor Telemetry Logs') {
-      columns = isSuperAdmin
-        ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)']
-        : ['MACHINE ID', 'DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)'];
+      columns = isSingleMachine
+        ? (isSuperAdmin
+            ? ['DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES']
+            : ['DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES'])
+        : (isSuperAdmin
+            ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES']
+            : ['MACHINE ID', 'DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES']);
     } else if (activeTab === 'Usage Analytics') {
-      columns = isSuperAdmin
-        ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'MACHINE USAGE (VISITS)']
-        : ['MACHINE ID', 'DATE', 'RO', 'MACHINE USAGE (VISITS)'];
+      columns = isSingleMachine
+        ? (isSuperAdmin
+            ? ['DATE', 'OMC', 'RO', 'MACHINE USAGE (VISITS)']
+            : ['DATE', 'RO', 'MACHINE USAGE (VISITS)'])
+        : (isSuperAdmin
+            ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'MACHINE USAGE (VISITS)']
+            : ['MACHINE ID', 'DATE', 'RO', 'MACHINE USAGE (VISITS)']);
     } else {
-      columns = isSuperAdmin
-        ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'SEVERITY', 'SENSOR ALERT']
-        : ['MACHINE ID', 'DATE', 'RO', 'SEVERITY', 'SENSOR ALERT'];
+      columns = isSingleMachine
+        ? (isSuperAdmin
+            ? ['DATE', 'OMC', 'RO', 'SEVERITY', 'SENSOR ALERT']
+            : ['DATE', 'RO', 'SEVERITY', 'SENSOR ALERT'])
+        : (isSuperAdmin
+            ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'SEVERITY', 'SENSOR ALERT']
+            : ['MACHINE ID', 'DATE', 'RO', 'SEVERITY', 'SENSOR ALERT']);
     }
 
     const rows = displayedData.map(r => {
       const dateInfo = formatDateDisplay(r.date, r.time, r.day);
       const omcName = r.omcName || getOmcName(r.ro_id, r);
       if (activeTab === 'Sensor Telemetry Logs') {
-        return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, omcName, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, `${r.transactions}`]
-          : [r.machineId, dateInfo.formatted, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, `${r.transactions}`];
+        const baseRow = isSuperAdmin
+          ? [dateInfo.formatted, omcName, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, `${r.transactions}`]
+          : [dateInfo.formatted, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, `${r.transactions}`];
+        return isSingleMachine ? baseRow : [r.machineId, ...baseRow];
       } else if (activeTab === 'Usage Analytics') {
-        return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, omcName, r.roName, `${r.val1} visits`]
-          : [r.machineId, dateInfo.formatted, r.roName, `${r.val1} visits`];
+        const baseRow = isSuperAdmin
+          ? [dateInfo.formatted, omcName, r.roName, `${r.val1} visits`]
+          : [dateInfo.formatted, r.roName, `${r.val1} visits`];
+        return isSingleMachine ? baseRow : [r.machineId, ...baseRow];
       } else {
-        return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, omcName, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-']
-          : [r.machineId, dateInfo.formatted, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-'];
+        const baseRow = isSuperAdmin
+          ? [dateInfo.formatted, omcName, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-']
+          : [dateInfo.formatted, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-'];
+        return isSingleMachine ? baseRow : [r.machineId, ...baseRow];
       }
     });
 
@@ -1086,6 +1103,7 @@ const Reports = () => {
         clientName: activeOmcName,
         roName: selectedRo !== 'All' ? (omcRos.find(r => String(r.id) === String(selectedRo))?.name || 'Selected RO') : 'All ROs',
         machineName: activeMachineName,
+        machineId: isSingleMachine ? (displayedData[0]?.machineId || (activeMachineName !== 'All Machines' ? activeMachineName : null)) : null,
         dateRange: filterType === 'Financial Year' ? financialYear : `${fromDate || 'Start'} to ${toDate || 'End'}`,
         generatedBy: user?.name ? `${user.name} (${user.role})` : (isOmcAdmin ? 'OMC Admin' : 'SuperAdmin (9284188705)')
       }

@@ -112,7 +112,17 @@ const SuperAdminDashboard = () => {
             else if (m.live_odour === 'Low') totalOdourScore += 75;
             else if (m.live_odour === 'Medium') totalOdourScore += 40;
             else if (m.live_odour === 'Danger') totalOdourScore += 10;
-            else totalOdourScore += 100; // Default or parsed num
+            else {
+              const numOdour = parseFloat(String(m.live_odour || '0').replace(/[^0-9.-]/g, ''));
+              if (!isNaN(numOdour) && numOdour > 0) {
+                if (numOdour > 70) totalOdourScore += 15;
+                else if (numOdour > 50) totalOdourScore += 45;
+                else if (numOdour > 35) totalOdourScore += 75;
+                else totalOdourScore += 100;
+              } else {
+                totalOdourScore += 100;
+              }
+            }
           });
 
           const count = savedMachines.length;
