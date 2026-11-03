@@ -422,9 +422,9 @@ const FeedbackLogs = () => {
       </div>
 
       {/* Top Summary KPI Cards */}
-      <div className="no-print" style={{
+      <div className="no-print stat-cards-grid" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))',
         gap: '1rem',
         marginBottom: '1.75rem'
       }}>

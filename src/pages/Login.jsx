@@ -46,7 +46,7 @@ const Login = () => {
   };
 
   return (
-    <div className="auth-split-container" style={{ padding: '1rem', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', overflow: 'hidden' }}>
+    <div className="auth-split-container" style={{ padding: '1.5rem 1rem', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden' }}>
       {/* Decorative Animated Mesh Blobs */}
       <div className="auth-bg-shape-1"></div>
       <div className="auth-bg-shape-2"></div>
@@ -62,7 +62,7 @@ const Login = () => {
       </button>
       
       {/* Centered Auth Card */}
-      <div className="auth-card" style={{ width: '100%', maxWidth: '400px', backgroundColor: theme === 'dark' ? 'var(--surface-bg)' : '#ffffff', borderRadius: '24px', overflow: 'hidden', border: '1px solid var(--border-color)', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.08)', zIndex: 10, padding: '2.5rem 2rem' }}>
+      <div className="auth-card" style={{ width: '100%', maxWidth: '420px', backgroundColor: theme === 'dark' ? 'var(--surface-bg)' : '#ffffff', borderRadius: '24px', overflow: 'hidden', border: '1px solid var(--border-color)', boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.08)', zIndex: 10, padding: 'clamp(1.5rem, 5vw, 2.25rem) clamp(1.25rem, 4vw, 2rem)', margin: 'auto 0' }}>
         {/* Top Header Section */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <img 
@@ -182,7 +182,7 @@ const Login = () => {
       </div>
 
       {/* Public Legal Links for Enterprise Compliance */}
-      <div style={{ position: 'absolute', bottom: '1.5rem', width: '100%', textAlign: 'center', color: '#64748b', fontSize: '0.85rem', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.75rem', zIndex: 10 }}>
+      <div className="auth-footer-links" style={{ position: 'relative', marginTop: '1.5rem', width: '100%', maxWidth: '420px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.75rem', zIndex: 10 }}>
         <Link to="/terms-conditions" style={{ color: 'inherit', textDecoration: 'underline' }}>Terms & Conditions</Link>
         <span style={{ opacity: 0.5 }}>|</span>
         <Link to="/privacy-policy" style={{ color: 'inherit', textDecoration: 'underline' }}>Privacy Policy</Link>

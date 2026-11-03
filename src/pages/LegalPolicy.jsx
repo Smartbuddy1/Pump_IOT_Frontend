@@ -208,7 +208,7 @@ const LegalPolicy = () => {
             <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>24/7 Enterprise Technical Assistance & Support</p>
             <hr style={{ borderColor: '#334155', margin: '1.5rem 0' }} />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '1.5rem', marginTop: '1.5rem' }}>
               <div style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderRadius: '12px', border: '1px solid #334155' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#38bdf8', marginBottom: '0.5rem' }}>
                   <Building2 size={20} />

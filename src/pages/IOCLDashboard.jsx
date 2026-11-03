@@ -160,10 +160,21 @@ const IOCLDashboard = () => {
       }, 2000);
     };
 
+    const handleFootfallUpdate = (data) => {
+      if (data?.todayUsers !== undefined) {
+        setLiveTodayUsers(data.todayUsers);
+      } else {
+        setLiveTodayUsers(prev => prev + 1);
+      }
+      debouncedFetchData();
+    };
+
     if (socket) {
       socket.on('live_data_update', handleLiveTelemetry);
       socket.on('new_alert', debouncedFetchData);
       socket.on('new_feedback', debouncedFetchData);
+      socket.on('footfall_update', handleFootfallUpdate);
+      socket.on('person_in', handleFootfallUpdate);
     }
 
     return () => {
@@ -176,6 +187,8 @@ const IOCLDashboard = () => {
         socket.off('live_data_update', handleLiveTelemetry);
         socket.off('new_alert', debouncedFetchData);
         socket.off('new_feedback', debouncedFetchData);
+        socket.off('footfall_update', handleFootfallUpdate);
+        socket.off('person_in', handleFootfallUpdate);
       }
     };
   }, [location.key, location.pathname, user, socket]);
@@ -267,7 +280,7 @@ const IOCLDashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="stat-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         {stats.map((stat, idx) => (
           <Link to={stat.link} key={idx} style={{ textDecoration: 'none', color: 'inherit' }}>
             <div style={{ 
@@ -319,10 +332,10 @@ const IOCLDashboard = () => {
 
 
       {/* Charts Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         
         {/* Daily Footfall Trends */}
-        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: '350px' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: 'min(100%, 300px)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
@@ -351,7 +364,7 @@ const IOCLDashboard = () => {
         </div>
 
         {/* Machine Status */}
-        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: '350px' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: 'min(100%, 300px)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold', margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>

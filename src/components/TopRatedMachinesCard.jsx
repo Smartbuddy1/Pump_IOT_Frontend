@@ -226,8 +226,8 @@ const TopRatedMachinesCard = ({
           <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>Machines will appear here as telemetry data arrives.</p>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+        <div className="table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+          <table className="data-table" style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                 <th style={{ padding: '0.75rem 1rem', fontWeight: '600', width: '70px', textAlign: 'center' }}>Rank</th>

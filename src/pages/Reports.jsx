@@ -1379,7 +1379,7 @@ const Reports = () => {
       {/* Filters Box */}
       <div className="no-print" style={{ background: 'var(--surface-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem', marginBottom: '1.5rem' }}>
+        <div className="reports-filters-top" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>OMC</label>
             {(isOmcAdmin || isRoUser) ? (
@@ -1473,7 +1473,7 @@ const Reports = () => {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: filterType === 'Financial Year' ? '1.2fr 1.5fr 1fr' : '1.2fr 1fr 1fr 1fr', gap: '1.25rem', alignItems: 'flex-end' }}>
+        <div className="reports-filter-dates-grid" style={{ display: 'grid', gridTemplateColumns: filterType === 'Financial Year' ? '1.2fr 1.5fr 1fr' : '1.2fr 1fr 1fr 1fr', gap: '1.25rem', alignItems: 'flex-end' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Filter Type</label>
             <div style={{ display: 'flex', gap: '1.5rem', padding: '0.75rem 0' }}>
@@ -1600,9 +1600,9 @@ const Reports = () => {
 
       {/* 4-Card Pro KPI Summary for Sensor Telemetry Logs */}
       {activeTab === 'Sensor Telemetry Logs' && sensorStats && (
-        <div className="no-print" style={{ 
+        <div className="no-print stat-cards-grid" style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', 
           gap: '1rem', 
           marginBottom: '1.5rem' 
         }}>

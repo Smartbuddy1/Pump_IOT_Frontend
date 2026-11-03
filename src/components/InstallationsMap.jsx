@@ -245,7 +245,7 @@ const InstallationsMap = () => {
           {/* Filters */}
           <select 
             className="form-input" 
-            style={{ width: '160px', padding: '0.4rem', height: '36px' }}
+            style={{ minWidth: '130px', flex: '1 1 140px', padding: '0.4rem', height: '36px' }}
             value={selectedState}
             onChange={(e) => {
               setSelectedState(e.target.value);
@@ -258,7 +258,7 @@ const InstallationsMap = () => {
 
           <select 
             className="form-input" 
-            style={{ width: '160px', padding: '0.4rem', height: '36px' }}
+            style={{ minWidth: '130px', flex: '1 1 140px', padding: '0.4rem', height: '36px' }}
             value={selectedDistrict}
             onChange={(e) => setSelectedDistrict(e.target.value)}
             disabled={!selectedState}

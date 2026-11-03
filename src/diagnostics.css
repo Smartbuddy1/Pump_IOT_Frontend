@@ -512,3 +512,42 @@
     padding-top: 2rem;
     border-top: 1px solid var(--border-color);
 }
+
+/* Mobile & Tablet Responsiveness for Diagnostics */
+@media (max-width: 640px) {
+    .dash-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    .dash-badge {
+        align-self: flex-start;
+    }
+    .dash-info-box {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1.25rem;
+    }
+    .io-item > div:first-child {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.75rem !important;
+    }
+    .io-controls {
+        width: 100% !important;
+        justify-content: space-between !important;
+    }
+    .io-remark-area {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 0.5rem !important;
+    }
+    .remark-input {
+        width: 100% !important;
+    }
+    .btn-pdf-export {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+}

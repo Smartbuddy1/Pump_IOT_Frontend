@@ -122,7 +122,6 @@ const Layout = () => {
             onClick={() => setIsSidebarOpen(false)}
             aria-label="Close menu"
             style={{
-              display: 'none',
               background: 'rgba(255, 255, 255, 0.15)',
               border: 'none',
               borderRadius: '6px',
@@ -203,7 +202,7 @@ const Layout = () => {
               className="hamburger-menu"
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Open menu"
-              style={{ display: 'none', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem', flexShrink: 0 }}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: '0.5rem', flexShrink: 0 }}
             >
               <Menu size={24} />
             </button>
@@ -325,7 +324,7 @@ const Layout = () => {
           </div>
         </header>
         <div className="page-content" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 64px)' }}>
-          <div style={{ flex: '1 0 auto', minHeight: 'calc(100vh - 120px)' }}>
+          <div className="page-outlet-wrapper" style={{ flex: '1 0 auto', minHeight: 'calc(100vh - 120px)', width: '100%', minWidth: 0 }}>
             <Outlet />
           </div>
           {!location.search?.includes('action=add') && <Footer />}

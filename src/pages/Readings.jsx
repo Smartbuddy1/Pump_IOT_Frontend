@@ -146,7 +146,7 @@ const ReadingsContent = () => {
         vocGas: cleanVoc,
         nh3: cleanNh3,
         h2s: cleanH2s,
-        water: data.water || 'Normal',
+        water: (data.water === 1 || data.water === '1' || String(data.water).toLowerCase() === 'normal') ? 'Normal' : (data.water === 0 || data.water === '0' || String(data.water).toLowerCase() === 'low' ? 'Low' : (data.water || 'Normal')),
         timestamp: data.timestamp || new Date().toISOString(),
         isLiveStream: true
       };
@@ -522,9 +522,9 @@ const ReadingsContent = () => {
       )}
 
       {/* Top Metric Cards - Live Values */}
-      <div className="no-print" style={{ 
+      <div className="no-print stat-cards-grid" style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', 
         gap: '1rem', 
         marginBottom: '1.5rem' 
       }}>

@@ -149,9 +149,20 @@ const OMCDashboard = () => {
       }, 2000);
     };
 
+    const handleFootfallUpdate = (data) => {
+      if (data?.todayUsers !== undefined) {
+        setLiveTodayUsers(data.todayUsers);
+      } else {
+        setLiveTodayUsers(prev => prev + 1);
+      }
+      debouncedFetchData();
+    };
+
     socket.on('live_data_update', handleLiveTelemetry);
     socket.on('new_alert', debouncedFetchData);
     socket.on('new_feedback', debouncedFetchData);
+    socket.on('footfall_update', handleFootfallUpdate);
+    socket.on('person_in', handleFootfallUpdate);
 
     return () => {
       window.removeEventListener('app_data_updated', handleDataChanged);
@@ -161,6 +172,8 @@ const OMCDashboard = () => {
       socket.off('live_data_update', handleLiveTelemetry);
       socket.off('new_alert', debouncedFetchData);
       socket.off('new_feedback', debouncedFetchData);
+      socket.off('footfall_update', handleFootfallUpdate);
+      socket.off('person_in', handleFootfallUpdate);
     };
   }, [location.key, location.pathname, user, socket]);
 
@@ -390,7 +403,7 @@ const OMCDashboard = () => {
 
 
       {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="stat-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         {stats.map((stat, idx) => (
           <Link to={stat.link} key={idx} style={{ textDecoration: 'none', color: 'inherit' }}>
             <div style={{ 
@@ -443,7 +456,7 @@ const OMCDashboard = () => {
       {/* Quick Actions */}
       <div style={{ marginBottom: '2rem' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)', margin: '0 0 1.5rem 0' }}>OMC Quick Actions</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '1.5rem' }}>
           {quickActions.map((action, idx) => (
             <Link to={action.link} key={idx} style={{ textDecoration: 'none', color: 'inherit' }}>
               <div style={{ 
@@ -486,10 +499,10 @@ const OMCDashboard = () => {
       </div>
 
       {/* Charts Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="charts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         
         {/* Daily Footfall Trends */}
-        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: '350px' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: 'min(100%, 300px)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold', margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
@@ -524,7 +537,7 @@ const OMCDashboard = () => {
         </div>
 
         {/* Machine Status */}
-        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: '350px' }}>
+        <div className="glass-panel" style={{ padding: '1.5rem', flex: '1', minWidth: 'min(100%, 300px)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
               <h3 style={{ fontSize: '1.125rem', fontWeight: 'bold', margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>

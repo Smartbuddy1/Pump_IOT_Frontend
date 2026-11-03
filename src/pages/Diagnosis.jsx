@@ -255,7 +255,7 @@ const Diagnosis = () => {
         {/* Hardware Subsystems */}
         <h3 style={{ fontSize: '1.125rem', fontWeight: '600', margin: '0 0 1.25rem 0', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)' }}>Hardware & Sensor Subsystems</h3>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+        <div className="stat-cards-grid diagnosis-subsystems-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '1.5rem' }}>
           
           {/* Card 1 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.25rem', background: 'var(--surface-bg)', border: '1px solid var(--border-color)', borderRadius: '12px' }}>

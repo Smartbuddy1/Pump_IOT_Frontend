@@ -428,7 +428,7 @@ const Alerts = () => {
       </div>
 
       {/* Summary Cards Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div className="stat-cards-grid alerts-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         
         {/* Card 1: Total Alerts */}
         <div 

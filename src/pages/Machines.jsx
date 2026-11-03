@@ -735,12 +735,35 @@ const Machines = () => {
       });
     };
 
+    const handleFootfallUpdate = (data) => {
+      if (!data || !data.machineId) return;
+      const targetId = String(data.machineId).toLowerCase().trim();
+      setItems(prevItems => {
+        return prevItems.map(m => {
+          const mId = String(m.toiletId || m.name || m.id || '').toLowerCase().trim();
+          if (mId === targetId || (mId.replace(/\D/g, '') !== '' && mId.replace(/\D/g, '') === targetId.replace(/\D/g, ''))) {
+            const currentVisits = Number(m.visits) || 0;
+            return {
+              ...m,
+              visits: data.visits !== undefined ? data.visits : (currentVisits + 1),
+              status: 'ACTIVE'
+            };
+          }
+          return m;
+        });
+      });
+    };
+
     socket.on('machine_status_update', handleStatusUpdate);
     socket.on('live_data_update', handleLiveTelemetry);
+    socket.on('footfall_update', handleFootfallUpdate);
+    socket.on('person_in', handleFootfallUpdate);
 
     return () => {
       socket.off('machine_status_update', handleStatusUpdate);
       socket.off('live_data_update', handleLiveTelemetry);
+      socket.off('footfall_update', handleFootfallUpdate);
+      socket.off('person_in', handleFootfallUpdate);
     };
   }, []);
 
@@ -1700,8 +1723,8 @@ const Machines = () => {
 
       {/* Modal Overlay - instant top-level rendering with backdrop blur */}
       {modalType && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '2rem' }}>
-          <div style={{ 
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '1rem' }}>
+          <div className="modal-content" style={{ 
             background: 'var(--surface-bg)', 
             borderRadius: '16px', 
             width: '100%', 

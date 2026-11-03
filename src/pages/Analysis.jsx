@@ -1207,7 +1207,7 @@ const Analysis = () => {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: filterType === 'Financial Year' ? '1fr 1fr 1fr auto' : '1fr 1fr 1fr 1fr auto', gap: '1.25rem', alignItems: 'flex-end' }}>
+        <div className="analysis-filters-dates-grid" style={{ display: 'grid', gridTemplateColumns: filterType === 'Financial Year' ? '1fr 1fr 1fr auto' : '1fr 1fr 1fr 1fr auto', gap: '1.25rem', alignItems: 'flex-end' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filter Type</label>
             <div style={{ display: 'flex', gap: '1.25rem', padding: '0.5rem 0' }}>
@@ -1411,7 +1411,7 @@ const Analysis = () => {
       </div>
 
       {/* GRAPHS GRID (With Interactive Timeline Scroller on Every Card) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
+      <div className="charts-grid analysis-charts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap: '1.5rem' }}>
 
         {/* 1. TEMPERATURE HISTOGRAM / AREA GRAPH */}
         <div 
