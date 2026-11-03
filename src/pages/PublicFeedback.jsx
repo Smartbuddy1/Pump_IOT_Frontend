@@ -75,7 +75,7 @@ const translations = {
     thankYouTitle: 'धन्यवाद! Thank You!',
     thankYouMsg: 'आपला मौल्यवान अभिप्राय यशस्वीरित्या नोंदवला गेला आहे. स्वच्छता व आरोग्य राखण्यासाठी आपल्या अभिप्रायाची त्वरित दखल घेतली जाईल.',
     submitAnother: 'नवीन फीडबॅक द्या (Submit Another)',
-    footer: 'Powered by Arya Innovtech Pvt Ltd • IoT Smart Sanitation Monitoring'
+    footer: 'Powered by Aarya Innovtech Pvt Ltd • IoT Smart Sanitation Monitoring'
   },
   hi: {
     langName: 'हिंदी',
@@ -127,7 +127,7 @@ const translations = {
     thankYouTitle: 'धन्यवाद! Thank You!',
     thankYouMsg: 'आपकी बहुमूल्य प्रतिक्रिया सफलतापूर्वक दर्ज कर ली गई है। स्वच्छता और स्वास्थ्य बनाए रखने के लिए इस पर तुरंत कार्रवाई की जाएगी।',
     submitAnother: 'नया फीडबैक दें (Submit Another)',
-    footer: 'Powered by Arya Innovtech Pvt Ltd • IoT Smart Sanitation Monitoring'
+    footer: 'Powered by Aarya Innovtech Pvt Ltd • IoT Smart Sanitation Monitoring'
   },
   en: {
     langName: 'English',
@@ -179,7 +179,7 @@ const translations = {
     thankYouTitle: 'Thank You!',
     thankYouMsg: 'Your valuable feedback has been recorded successfully. Our team will review this to maintain high hygiene standards.',
     submitAnother: 'Submit Another Feedback',
-    footer: 'Powered by Arya Innovtech Pvt Ltd • IoT Smart Sanitation Monitoring'
+    footer: 'Powered by Aarya Innovtech Pvt Ltd • IoT Smart Sanitation Monitoring'
   }
 };
 
@@ -498,7 +498,7 @@ const PublicFeedback = () => {
               }}>
                 <ShieldCheck size={20} color="#10b981" />
                 <span style={{ fontSize: '0.85rem', color: '#a7f3d0', fontWeight: '600' }}>
-                  Arya Innovtech IoT Smart Sanitation System
+                  Aarya Innovtech IoT Smart Sanitation System
                 </span>
               </div>
 

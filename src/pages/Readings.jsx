@@ -327,6 +327,21 @@ const ReadingsContent = () => {
     return range;
   }, [currentPage, totalPages]);
 
+  // Helper to normalize water level
+  const getWaterLabel = (water) => {
+    if (water === undefined || water === null) return 'Normal';
+    const s = String(water).trim().toLowerCase();
+    if (s === 'low' || s === '0' || s === 'refill' || s === 'danger') return 'Low';
+    if (s === 'normal' || s === '1' || s === 'ok') return 'Normal';
+    const num = Number(water);
+    if (!isNaN(num)) {
+      if (num === 0) return 'Low';
+      if (num === 1) return 'Normal';
+      return num <= 20 ? 'Low' : 'Normal';
+    }
+    return 'Normal';
+  };
+
   // Export to PDF
   const handleExportPDF = () => {
     if (filteredReadings.length === 0) {
@@ -338,7 +353,7 @@ const ReadingsContent = () => {
       : (filteredReadings[0]?.machineId || 'SBE20001');
 
     // MACHINE ID is displayed prominently in header instead of repeating on each row
-    const columns = ['#', 'TIMESTAMP', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC GAS (PPM)', 'NH3 (PPM)', 'H2S (PPM)'];
+    const columns = ['#', 'TIMESTAMP', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC GAS (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'WATER LEVEL'];
     const rows = filteredReadings.map((r, i) => {
       const dt = formatDate(r.timestamp);
       return [
@@ -348,7 +363,8 @@ const ReadingsContent = () => {
         `${r.humidity ?? '-'}%`,
         `${r.vocGas ?? '-'} PPM`,
         `${r.nh3 ?? '-'} PPM`,
-        `${r.h2s ?? '-'} PPM`
+        `${r.h2s ?? '-'} PPM`,
+        getWaterLabel(r.water)
       ];
     });
 
@@ -370,10 +386,10 @@ const ReadingsContent = () => {
       alert('No readings available to export.');
       return;
     }
-    const headers = ['Index,Timestamp,MachineID,Temperature_C,Humidity_Percent,VOC_Gas_PPM,NH3_PPM,H2S_PPM'];
+    const headers = ['Index,Timestamp,MachineID,Temperature_C,Humidity_Percent,VOC_Gas_PPM,NH3_PPM,H2S_PPM,Water_Level'];
     const csvRows = filteredReadings.map((r, i) => {
       const dt = formatDate(r.timestamp);
-      return `${i + 1},"${dt.date} ${dt.time}",${r.machineId || 'SBE20001'},${r.temp ?? ''},${r.humidity ?? ''},${r.vocGas ?? ''},${r.nh3 ?? ''},${r.h2s ?? ''}`;
+      return `${i + 1},"${dt.date} ${dt.time}",${r.machineId || 'SBE20001'},${r.temp ?? ''},${r.humidity ?? ''},${r.vocGas ?? ''},${r.nh3 ?? ''},${r.h2s ?? ''},${getWaterLabel(r.water)}`;
     });
     const blob = new Blob([[headers, ...csvRows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -791,12 +807,13 @@ const ReadingsContent = () => {
                 <th style={{ padding: '1rem', fontWeight: '700', color: '#059669', textAlign: 'center' }}>VOC GAS (PPM)</th>
                 <th style={{ padding: '1rem', fontWeight: '700', color: '#0284c7', textAlign: 'center' }}>NH3 (PPM)</th>
                 <th style={{ padding: '1rem', fontWeight: '700', color: '#7c3aed', textAlign: 'center' }}>H2S (PPM)</th>
+                <th style={{ padding: '1rem', fontWeight: '700', color: '#0ea5e9', textAlign: 'center' }}>WATER LEVEL</th>
               </tr>
             </thead>
             <tbody>
               {loading && readings.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="9" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
                       <RefreshCw size={20} className="animate-spin" color="#10b981" />
                       Loading 2-day PCB telemetry stream...
@@ -929,12 +946,37 @@ const ReadingsContent = () => {
                           {r.h2s ?? '-'} <span style={{ fontSize: '0.72rem' }}>PPM</span>
                         </span>
                       </td>
+
+                      {/* Water Level */}
+                      <td style={{ padding: '0.95rem 1rem', textAlign: 'center' }}>
+                        {(() => {
+                          const wLabel = getWaterLabel(r.water);
+                          const isLow = wLabel === 'Low';
+                          return (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '0.3rem 0.75rem',
+                              borderRadius: '8px',
+                              fontWeight: '800',
+                              fontSize: '0.85rem',
+                              backgroundColor: isLow ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                              color: isLow ? '#dc2626' : '#059669',
+                              border: `1px solid ${isLow ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
+                            }}>
+                              <Droplets size={13} />
+                              {wLabel}
+                            </span>
+                          );
+                        })()}
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan="8" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan="9" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                     No readings found matching "{searchTerm}"
                   </td>
                 </tr>

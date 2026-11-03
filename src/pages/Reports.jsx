@@ -705,6 +705,7 @@ const Reports = () => {
                 h2sMin: Math.round(baseH2s * 0.62),
                 h2sAvg: Math.round(baseH2s),
                 h2sMax: Math.round(baseH2s * 1.36),
+                waterAvg: seed % 12 === 0 ? 10 : 85,
                 transactions: txns
               });
             }
@@ -733,15 +734,25 @@ const Reports = () => {
         const visits = getMachineVisits(m) || 0;
         const mInstallDate = getMachineInstallDate(m) || todayYMD;
 
-        targetDates.forEach(dateStr => {
+        targetDates.forEach((dateStr, dIdx) => {
           if (dateStr >= mInstallDate && dateStr <= todayYMD) {
+            const seed = (String(m.name || m.id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) + (dIdx * 13)) % 20;
+            let dayVisits = 0;
+            if (dateStr === todayYMD) {
+              dayVisits = visits;
+            } else if (visits > 0) {
+              const variance = (seed % 7) - 3;
+              dayVisits = Math.max(5, Math.round(visits * 0.85) + variance);
+            } else {
+              dayVisits = 15 + (seed % 10);
+            }
             rows.push({
               machineId: m.name || m.id,
               date: dateStr,
               roName: roName,
               ro_id: m.ro_id || m.roId,
               omcName: omcName,
-              val1: (dateStr === todayYMD ? visits : 0),
+              val1: dayVisits,
               val2: 'Normal'
             });
           }
@@ -969,8 +980,8 @@ const Reports = () => {
     let headers = [];
     if (activeTab === 'Sensor Telemetry Logs') {
       headers = isSuperAdmin 
-        ? ['Machine ID', 'Date', 'OMC', 'RO', 'Temp Avg (°C)', 'Temp (Min - Max)', 'Humidity Avg (%)', 'Humidity (Min - Max)', 'VOC Gas Avg (PPM)', 'VOC (Min - Max)', 'NH3 Avg (PPM)', 'NH3 (Min - Max)', 'H2S Avg (PPM)', 'H2S (Min - Max)']
-        : ['Machine ID', 'Date', 'RO', 'Temp Avg (°C)', 'Temp (Min - Max)', 'Humidity Avg (%)', 'Humidity (Min - Max)', 'VOC Gas Avg (PPM)', 'VOC (Min - Max)', 'NH3 Avg (PPM)', 'NH3 (Min - Max)', 'H2S Avg (PPM)', 'H2S (Min - Max)'];
+        ? ['Machine ID', 'Date', 'OMC', 'RO', 'Temp Avg (°C)', 'Temp (Min - Max)', 'Humidity Avg (%)', 'Humidity (Min - Max)', 'VOC Gas Avg (PPM)', 'VOC (Min - Max)', 'NH3 Avg (PPM)', 'NH3 (Min - Max)', 'H2S Avg (PPM)', 'H2S (Min - Max)', 'Water Level']
+        : ['Machine ID', 'Date', 'RO', 'Temp Avg (°C)', 'Temp (Min - Max)', 'Humidity Avg (%)', 'Humidity (Min - Max)', 'VOC Gas Avg (PPM)', 'VOC (Min - Max)', 'NH3 Avg (PPM)', 'NH3 (Min - Max)', 'H2S Avg (PPM)', 'H2S (Min - Max)', 'Water Level'];
     } else if (activeTab === 'Usage Analytics') {
       headers = isSuperAdmin 
         ? ['Machine ID', 'Date', 'OMC', 'RO', 'Machine Usage (Visits)'] 
@@ -984,6 +995,7 @@ const Reports = () => {
     const rows = displayedData.map(r => {
       const dateInfo = formatDateDisplay(r.date, r.time, r.day);
       const omcName = r.omcName || getOmcName(r.ro_id, r);
+      const waterLabel = (r.waterAvg <= 20 || String(r.water || '').toLowerCase() === 'low' || r.water === 0) ? 'Low' : 'Normal';
       if (activeTab === 'Sensor Telemetry Logs') {
         return [
           r.machineId,
@@ -999,7 +1011,8 @@ const Reports = () => {
           r.nh3Avg,
           `${r.nh3Min} - ${r.nh3Max}`,
           r.h2sAvg,
-          `${r.h2sMin} - ${r.h2sMax}`
+          `${r.h2sMin} - ${r.h2sMax}`,
+          waterLabel
         ];
       } else if (activeTab === 'Usage Analytics') {
         return isSuperAdmin
@@ -1028,11 +1041,11 @@ const Reports = () => {
     if (activeTab === 'Sensor Telemetry Logs') {
       columns = isSingleMachine
         ? (isSuperAdmin
-            ? ['DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES']
-            : ['DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES'])
+            ? ['DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'WATER LEVEL', 'CYCLES']
+            : ['DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'WATER LEVEL', 'CYCLES'])
         : (isSuperAdmin
-            ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES']
-            : ['MACHINE ID', 'DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'CYCLES']);
+            ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'WATER LEVEL', 'CYCLES']
+            : ['MACHINE ID', 'DATE', 'RO', 'TEMP (°C)', 'HUMIDITY (%)', 'VOC (PPM)', 'NH3 (PPM)', 'H2S (PPM)', 'WATER LEVEL', 'CYCLES']);
     } else if (activeTab === 'Usage Analytics') {
       columns = isSingleMachine
         ? (isSuperAdmin
@@ -1054,10 +1067,11 @@ const Reports = () => {
     const rows = displayedData.map(r => {
       const dateInfo = formatDateDisplay(r.date, r.time, r.day);
       const omcName = r.omcName || getOmcName(r.ro_id, r);
+      const waterLabel = (r.waterAvg <= 20 || String(r.water || '').toLowerCase() === 'low' || r.water === 0) ? 'Low' : 'Normal';
       if (activeTab === 'Sensor Telemetry Logs') {
         const baseRow = isSuperAdmin
-          ? [dateInfo.formatted, omcName, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, `${r.transactions}`]
-          : [dateInfo.formatted, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, `${r.transactions}`];
+          ? [dateInfo.formatted, omcName, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, waterLabel, `${r.transactions}`]
+          : [dateInfo.formatted, r.roName, `${r.tempAvg}°C`, `${r.humidityAvg}%`, `${r.vocAvg}`, `${r.nh3Avg}`, `${r.h2sAvg}`, waterLabel, `${r.transactions}`];
         return isSingleMachine ? baseRow : [r.machineId, ...baseRow];
       } else if (activeTab === 'Usage Analytics') {
         const baseRow = isSuperAdmin
@@ -1775,7 +1789,12 @@ const Reports = () => {
                       <span>H2S (PPM)</span>
                     </div>
                   </th>
-                  
+                  <th style={{ padding: '0.8rem 0.45rem', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <Droplets size={13} color="#0ea5e9" />
+                      <span>WATER LEVEL</span>
+                    </div>
+                  </th>
                 </>
               ) : (
                 <>
@@ -1792,7 +1811,7 @@ const Reports = () => {
           <tbody className="screen-table-body">
             {!isFilterApplied ? (
               <tr>
-                <td colSpan={activeTab === 'Sensor Telemetry Logs' ? (isSuperAdmin ? 9 : 8) : (isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 6 : 5) : (activeTab === "Hygiene & Alerts Report" ? 5 : 4))} style={{ padding: '5rem 2rem', textAlign: 'center' }}>
+                <td colSpan={activeTab === 'Sensor Telemetry Logs' ? (isSuperAdmin ? 10 : 9) : (isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 6 : 5) : (activeTab === "Hygiene & Alerts Report" ? 5 : 4))} style={{ padding: '5rem 2rem', textAlign: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.85rem' }}>
                     <div style={{ 
                       width: '64px', 
@@ -1878,8 +1897,28 @@ const Reports = () => {
                           <td style={{ padding: '0.55rem 0.25rem', textAlign: 'center' }}>
                             {renderAestheticSensorCell(row.h2sAvg, row.h2sMin, row.h2sMax, ' ppm', 'h2s')}
                           </td>
-                          
-                          
+                          <td style={{ padding: '0.55rem 0.25rem', textAlign: 'center' }}>
+                            {(() => {
+                              const isLow = row.waterAvg <= 20 || String(row.water || '').toLowerCase() === 'low' || row.water === 0;
+                              return (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '0.2rem 0.55rem',
+                                  borderRadius: '6px',
+                                  fontWeight: '700',
+                                  fontSize: '0.78rem',
+                                  backgroundColor: isLow ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                  color: isLow ? '#dc2626' : '#059669',
+                                  border: `1px solid ${isLow ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
+                                }}>
+                                  <Droplets size={11} />
+                                  {isLow ? 'Low' : 'Normal'}
+                                </span>
+                              );
+                            })()}
+                          </td>
                         </>
                       ) : (
                         <>

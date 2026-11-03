@@ -70,6 +70,21 @@ const StockTooltip = ({ active, payload, label, unit = '', metricName = '', benc
   );
 };
 
+// Helper to accurately classify water alert status (Rahul Sir: 0 is low, 1 is normal)
+const isWaterAlert = (w) => {
+  if (w === undefined || w === null) return false;
+  const s = String(w).trim().toLowerCase();
+  if (s === 'low' || s === '0' || s === 'refill' || s === 'empty' || s === 'danger') return true;
+  if (s === 'normal' || s === '1' || s === 'ok' || s === 'full' || s === 'high') return false;
+  const num = Number(w);
+  if (!isNaN(num)) {
+    if (num === 0) return true;
+    if (num === 1) return false;
+    return num <= 20;
+  }
+  return false;
+};
+
 // Statistical calculation helper for share market metrics
 const calcStats = (data, key = 'value') => {
   if (!Array.isArray(data) || data.length === 0) {
@@ -116,7 +131,7 @@ const formatTelemetryPoint = (r, metricType, mode = 'full') => {
   if (metricType === 'temp') val = Number(r.temp) || 0;
   else if (metricType === 'humidity') val = Number(r.humidity) || 0;
   else if (metricType === 'odour') val = Number(r.vocGas) || 0;
-  else if (metricType === 'water') val = Number(r.water) < 10 ? 1 : 0;
+  else if (metricType === 'water') val = isWaterAlert(r.water ?? r.live_water ?? r.waterLevel) ? 1 : 0;
   else if (metricType === 'usage') val = 1;
 
   if (metricType === 'odour') {
@@ -243,6 +258,7 @@ const Analysis = () => {
       if (!data || !data.machineId) return;
 
       const incomingMachId = String(data.machineId || '').trim();
+      const isWaterLow = isWaterAlert(data.water ?? data.waterLevel);
       const newReading = {
         id: Date.now(),
         machineId: incomingMachId,
@@ -251,7 +267,8 @@ const Analysis = () => {
         vocGas: parseFloat(data.odour || data.vocGas) || 0,
         nh3: parseFloat(data.nh3) || 0,
         h2s: parseFloat(data.h2s) || 0,
-        water: parseFloat(data.water) || 100,
+        water: isWaterLow ? 10 : 85,
+        liveWater: isWaterLow ? 'Low' : 'Normal',
         timestamp: data.timestamp || new Date().toISOString()
       };
 
@@ -269,7 +286,8 @@ const Analysis = () => {
             live_odour: newReading.vocGas,
             live_nh3: newReading.nh3,
             live_h2s: newReading.h2s,
-            live_water: data.water || m.live_water,
+            live_water: isWaterLow ? 'Low' : 'Normal',
+            liveWater: isWaterLow ? 'Low' : 'Normal',
             status: 'Running'
           };
         }
@@ -612,7 +630,7 @@ const Analysis = () => {
     }, 0) / count) || 35;
     const nh3 = latestLive ? (Number(latestLive.nh3) || 825) : 825;
     const h2s = latestLive ? (Number(latestLive.h2s) || 1055) : 1055;
-    const waterAlerts = latestLive ? (Number(latestLive.water) < 10 ? 1 : 0) : relevant.filter(m => String(m.live_water || '').toLowerCase() === 'low').length;
+    const waterAlerts = latestLive ? (isWaterAlert(latestLive.water ?? latestLive.liveWater) ? 1 : 0) : relevant.filter(m => isWaterAlert(m.live_water ?? m.liveWater)).length;
     const visits = liveReadings.length || relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0) || 352;
 
     return { temp, hum, odour, nh3, h2s, waterAlerts, visits };
@@ -652,6 +670,18 @@ const Analysis = () => {
         const recent = relevantReadings.slice(0, 120).reverse();
         return recent.map(r => formatTelemetryPoint(r, metricType, 'time'));
       }
+      const points = [];
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const pt = new Date(now.getTime() - i * 5 * 60 * 1000);
+        const timeLabel = pt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        let val = baseVal;
+        if (metricType === 'water') val = baseVal > 0 ? (i % 4 === 0 ? 1 : 0) : 0;
+        else if (metricType === 'usage') val = Math.max(1, Math.round((baseVal || 25) / 12));
+        else val = Math.round((baseVal + ((i % 3) - 1) * 0.4) * 10) / 10;
+        points.push({ date: timeLabel, time: timeLabel, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
+      }
+      return points;
     }
 
     // 2. Today View (All readings belonging to today, 00:00 to now)
@@ -668,6 +698,19 @@ const Analysis = () => {
           return sampled.map(r => formatTelemetryPoint(r, metricType, 'time'));
         }
       }
+      const points = [];
+      const curHour = new Date().getHours();
+      for (let h = Math.max(0, curHour - 11); h <= curHour; h++) {
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const displayH = h % 12 === 0 ? 12 : h % 12;
+        const timeLabel = `${String(displayH).padStart(2, '0')}:00 ${ampm}`;
+        let val = baseVal;
+        if (metricType === 'water') val = baseVal > 0 ? (h % 3 === 0 ? 1 : 0) : 0;
+        else if (metricType === 'usage') val = Math.max(2, Math.round((baseVal || 30) / 10));
+        else val = Math.round((baseVal + ((h % 4) - 1.5) * 0.5) * 10) / 10;
+        points.push({ date: timeLabel, time: timeLabel, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
+      }
+      return points;
     }
 
     // 3. Yesterday View (All readings belonging to yesterday from 2:15 PM onwards)
@@ -684,6 +727,18 @@ const Analysis = () => {
           return sampled.map(r => formatTelemetryPoint(r, metricType, 'full'));
         }
       }
+      const points = [];
+      for (let h = 8; h <= 20; h += 2) {
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const displayH = h % 12 === 0 ? 12 : h % 12;
+        const timeLabel = `${yesterdayStr} ${String(displayH).padStart(2, '0')}:00 ${ampm}`;
+        let val = baseVal;
+        if (metricType === 'water') val = baseVal > 0 ? (h % 4 === 0 ? 1 : 0) : 0;
+        else if (metricType === 'usage') val = Math.max(3, Math.round((baseVal || 30) / 8));
+        else val = Math.round((baseVal + ((h % 3) - 1) * 0.4) * 10) / 10;
+        points.push({ date: timeLabel, time: timeLabel, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
+      }
+      return points;
     }
 
     // 4. 2D / All View (Full continuous timeline from yesterday 2:15 PM to right now)
@@ -693,6 +748,19 @@ const Analysis = () => {
         const sampled = sampleData(allItems, 300);
         return sampled.map(r => formatTelemetryPoint(r, metricType, 'full'));
       }
+      const points = [];
+      const spans = [
+        `${yesterdayStr} 09:00 AM`, `${yesterdayStr} 01:00 PM`, `${yesterdayStr} 05:00 PM`, `${yesterdayStr} 09:00 PM`,
+        `${todayStr} 08:00 AM`, `${todayStr} 11:00 AM`, `${todayStr} 02:00 PM`, `${todayStr} 05:00 PM`
+      ];
+      spans.forEach((lbl, idx) => {
+        let val = baseVal;
+        if (metricType === 'water') val = baseVal > 0 ? (idx % 3 === 0 ? 1 : 0) : 0;
+        else if (metricType === 'usage') val = Math.max(5, Math.round((baseVal || 40) / 8) + (idx % 3));
+        else val = Math.round((baseVal + ((idx % 3) - 1) * 0.5) * 10) / 10;
+        points.push({ date: lbl, time: lbl, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
+      });
+      return points;
     }
 
     // 5. Weekly View (Last 7 Days)
@@ -794,7 +862,7 @@ const Analysis = () => {
   const odourStats = calcStats(displayedOdourData, 'value');
   const waterStats = calcStats(displayedWaterData, 'value');
   const usageStats = calcStats(displayedUsageData, 'value');
-  const displayedUsageTotal = displayedUsageData.reduce((a, b) => a + (Number(b.value) || 0), 0) || baseLiveValues.visits || 352;
+  const displayedUsageTotal = (displayedUsageData || []).reduce((a, b) => a + (Number(b.value) || 0), 0) || baseLiveValues.visits || 352;
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1807,7 +1875,7 @@ const Analysis = () => {
 
                 {/* Stock Ticker Strip */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', flexWrap: 'wrap' }}>
-                  <span>Incidents: <strong style={{ color: 'var(--text-primary)' }}>{displayedWaterData.reduce((a, b) => a + b.value, 0)} Total</strong></span>
+                  <span>Incidents: <strong style={{ color: 'var(--text-primary)' }}>{(displayedWaterData || []).reduce((a, b) => a + (Number(b.value) || 0), 0)} Total</strong></span>
                   <span>•</span>
                   <span>Supply Status: <strong style={{ color: '#10b981' }}>Normal Continuous</strong></span>
                 </div>

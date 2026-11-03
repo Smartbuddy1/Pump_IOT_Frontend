@@ -199,8 +199,23 @@ const IOCLDashboard = () => {
   // Accurate live users count from database telemetry for this RO's machines
   const usersToday = liveTodayUsers;
 
-  // 7-day footfall ending TODAY with accurate match to database telemetry
-  const chartFootfallData = dailyFootfallData.length > 0 ? dailyFootfallData : (() => {
+  // 7-day footfall ending TODAY with accurate match to database telemetry & fallback
+  const chartFootfallData = (() => {
+    const totalMachineVisits = (machinesList || []).reduce((acc, m) => acc + (Number(m.visits) || 0), 0);
+    const effectiveToday = usersToday > 0 ? usersToday : totalMachineVisits;
+
+    if (dailyFootfallData && dailyFootfallData.length > 0) {
+      const updated = dailyFootfallData.map((item, idx) => {
+        if (idx === dailyFootfallData.length - 1 && effectiveToday > (Number(item.users) || 0)) {
+          return { ...item, users: effectiveToday };
+        }
+        return item;
+      });
+      if (updated.some(item => (Number(item.users) || 0) > 0)) {
+        return updated;
+      }
+    }
+
     const baseDate = new Date();
     const list = [];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -214,7 +229,7 @@ const IOCLDashboard = () => {
       list.push({
         day: dayLabel,
         fullDay: `${dayLabel} (${shortDay})`,
-        users: i === 0 ? usersToday : 0
+        users: i === 0 ? effectiveToday : 0
       });
     }
     return list;

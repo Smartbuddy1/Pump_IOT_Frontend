@@ -228,8 +228,23 @@ const SuperAdminDashboard = () => {
   // Today's total users accurately retrieved live from database telemetry
   const usersToday = liveTodayUsers;
 
-  // Fallback 7-day footfall ending TODAY if no history yet
-  const chartFootfallData = dailyFootfallData.length > 0 ? dailyFootfallData : (() => {
+  // Fallback 7-day footfall ending TODAY with live socket & fallback handling
+  const chartFootfallData = (() => {
+    const totalMachineVisits = (machinesList || []).reduce((acc, m) => acc + (Number(m.visits) || 0), 0);
+    const effectiveToday = usersToday > 0 ? usersToday : totalMachineVisits;
+
+    if (dailyFootfallData && dailyFootfallData.length > 0) {
+      const updated = dailyFootfallData.map((item, idx) => {
+        if (idx === dailyFootfallData.length - 1 && effectiveToday > (Number(item.users) || 0)) {
+          return { ...item, users: effectiveToday };
+        }
+        return item;
+      });
+      if (updated.some(item => (Number(item.users) || 0) > 0)) {
+        return updated;
+      }
+    }
+
     const baseDate = new Date();
     const fallbackList = [];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -243,7 +258,7 @@ const SuperAdminDashboard = () => {
       fallbackList.push({
         day: dayLabel,
         fullDay: `${dayLabel} (${shortDay})`,
-        users: i === 0 ? usersToday : 0
+        users: i === 0 ? effectiveToday : 0
       });
     }
     return fallbackList;
@@ -451,7 +466,7 @@ const SuperAdminDashboard = () => {
           </div>
           <div style={{ height: '280px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyFootfallData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={chartFootfallData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} />
