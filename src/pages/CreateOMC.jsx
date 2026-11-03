@@ -135,7 +135,7 @@ const CreateOMC = () => {
     if (type === 'edit' && item) {
       setFormData({
         ...item,
-        contact_password: item.contact_password || item.credentials?.password || 'password123'
+        contact_password: '' // Kept empty on edit so existing password is never inadvertently reset
       });
     } else {
       setFormData({ id: '', name: '', location: '', contact: '', contact_password: '' });
@@ -187,9 +187,18 @@ const CreateOMC = () => {
       return;
     }
 
-    if (!formData.contact_password || formData.contact_password.trim().length < 8) {
-      alert('Password must be at least 8 characters long.');
-      return;
+    const isNewPasswordEntered = formData.contact_password && formData.contact_password.trim().length > 0;
+
+    if (modalType === 'add') {
+      if (!formData.contact_password || formData.contact_password.trim().length < 8) {
+        alert('Password must be at least 8 characters long.');
+        return;
+      }
+    } else if (modalType === 'edit' && isNewPasswordEntered) {
+      if (formData.contact_password.trim().length < 8) {
+        alert('New password must be at least 8 characters long.');
+        return;
+      }
     }
 
     try {
@@ -210,12 +219,16 @@ const CreateOMC = () => {
           return;
         }
       } else if (modalType === 'edit') {
-        const res = await api.put(`/omc/${selectedItem.id}`, {
+        const payload = {
           name: formData.name.trim(),
           location: formData.location,
-          contact: cleanContact,
-          contact_password: formData.contact_password.trim()
-        });
+          contact: cleanContact
+        };
+        // Only include contact_password if a new password was actually entered
+        if (isNewPasswordEntered) {
+          payload.contact_password = formData.contact_password.trim();
+        }
+        const res = await api.put(`/omc/${selectedItem.id}`, payload);
         if (res.data && res.data.success) {
           await fetchOMCs();
           window.dispatchEvent(new CustomEvent('app_data_updated', { detail: { resource: 'omc', method: 'put' } }));
@@ -500,7 +513,9 @@ const CreateOMC = () => {
                     )}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)' }}>Password *</label>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                      {modalType === 'edit' ? 'Change Password (Optional)' : 'Password *'}
+                    </label>
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       <button
                         type="button"
@@ -525,7 +540,7 @@ const CreateOMC = () => {
                         type={showFormPassword ? "text" : "password"} 
                         value={formData.contact_password || ''} 
                         onChange={(e) => setFormData({...formData, contact_password: e.target.value})} 
-                        placeholder="Enter Password (Min 8 characters)" 
+                        placeholder={modalType === 'edit' ? "Leave blank to keep existing password" : "Enter Password (Min 8 characters)"} 
                         style={{ 
                           width: '100%', 
                           padding: '0.75rem 1rem 0.75rem 2.5rem', 
@@ -548,17 +563,41 @@ const CreateOMC = () => {
                   <button onClick={closeModal} style={{ padding: '0.6rem 1.5rem', border: '1px solid var(--border-color)', background: 'var(--surface-bg)', borderRadius: '999px', cursor: 'pointer', color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.9rem' }}>Cancel</button>
                   <button 
                     onClick={handleSave} 
-                    disabled={Boolean(isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || !formData.contact_password || formData.contact_password.trim().length < 8)}
+                    disabled={Boolean(
+                      isDuplicateContact || 
+                      cleanPhoneInput.length !== 10 || 
+                      !formData.name?.trim() || 
+                      !formData.location?.trim() || 
+                      (modalType === 'add' ? (!formData.contact_password || formData.contact_password.trim().length < 8) : (formData.contact_password && formData.contact_password.trim().length > 0 && formData.contact_password.trim().length < 8))
+                    )}
                     style={{ 
                       padding: '0.6rem 1.5rem', 
                       border: 'none', 
-                      background: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8)) ? '#9ca3af' : '#6366f1', 
+                      background: (
+                        isDuplicateContact || 
+                        cleanPhoneInput.length !== 10 || 
+                        !formData.name?.trim() || 
+                        !formData.location?.trim() || 
+                        (modalType === 'add' ? (!formData.contact_password || formData.contact_password.trim().length < 8) : (formData.contact_password && formData.contact_password.trim().length > 0 && formData.contact_password.trim().length < 8))
+                      ) ? '#9ca3af' : '#6366f1', 
                       color: '#ffffff', 
                       borderRadius: '999px', 
-                      cursor: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8)) ? 'not-allowed' : 'pointer', 
+                      cursor: (
+                        isDuplicateContact || 
+                        cleanPhoneInput.length !== 10 || 
+                        !formData.name?.trim() || 
+                        !formData.location?.trim() || 
+                        (modalType === 'add' ? (!formData.contact_password || formData.contact_password.trim().length < 8) : (formData.contact_password && formData.contact_password.trim().length > 0 && formData.contact_password.trim().length < 8))
+                      ) ? 'not-allowed' : 'pointer', 
                       fontWeight: '600', 
                       fontSize: '0.9rem',
-                      opacity: (isDuplicateContact || cleanPhoneInput.length !== 10 || !formData.name?.trim() || !formData.location?.trim() || (!formData.contact_password || formData.contact_password.trim().length < 8)) ? 0.6 : 1
+                      opacity: (
+                        isDuplicateContact || 
+                        cleanPhoneInput.length !== 10 || 
+                        !formData.name?.trim() || 
+                        !formData.location?.trim() || 
+                        (modalType === 'add' ? (!formData.contact_password || formData.contact_password.trim().length < 8) : (formData.contact_password && formData.contact_password.trim().length > 0 && formData.contact_password.trim().length < 8))
+                      ) ? 0.6 : 1
                     }}
                   >
                     Save

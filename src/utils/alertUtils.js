@@ -157,7 +157,9 @@ export const getConsolidatedAlerts = ({
     const matchedRo = ros.find(r => String(r.id) === String(m.ro_id || m.roId) || r.name === m.roName);
     const mRoName = matchedRo ? matchedRo.name : (m.roName || 'Retail Outlet');
     const mRoId = matchedRo ? matchedRo.id : (m.ro_id || m.roId || '');
-    const now = new Date();
+    // Use actual machine telemetry timestamp so alerts reflect the exact time hardware sent high readings
+    const machineTime = m.last_seen || m.lastSeen || m.created_at;
+    const now = machineTime && !isNaN(new Date(machineTime).getTime()) ? new Date(machineTime) : new Date();
     const nowIso = now.toISOString();
 
     // Temperature (>= 41 Danger, <= 20 Low)
