@@ -228,10 +228,9 @@ const SuperAdminDashboard = () => {
   // Today's total users accurately retrieved live from database telemetry
   const usersToday = liveTodayUsers;
 
-  // Fallback 7-day footfall ending TODAY with live socket & fallback handling
+  // 7-day footfall ending TODAY with live socket & footfall updates
   const chartFootfallData = (() => {
-    const totalMachineVisits = (machinesList || []).reduce((acc, m) => acc + (Number(m.visits) || 0), 0);
-    const effectiveToday = usersToday > 0 ? usersToday : totalMachineVisits;
+    const effectiveToday = Number(usersToday) || 0;
 
     if (dailyFootfallData && dailyFootfallData.length > 0) {
       const updated = dailyFootfallData.map((item, idx) => {
