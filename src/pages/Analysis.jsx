@@ -418,7 +418,9 @@ const Analysis = () => {
         date: dateLabel,
         avg_temp: Math.max(18, Math.min(42, Math.round((baseTemp + tempVariance) * 10) / 10)),
         avg_humidity: Math.max(30, Math.min(85, baseHum + humVariance)),
-        avg_odour: Math.max(10, Math.min(90, baseOdour + odourVariance)),
+        avg_odour: Math.max(10, Math.min(1800, baseOdour + odourVariance)),
+        avg_nh3: Math.max(10, Math.min(1500, (baseLiveValues.nh3 || 825) + ((dayOffset % 3) - 1) * 25)),
+        avg_h2s: Math.max(10, Math.min(1500, (baseLiveValues.h2s || 1055) - ((dayOffset % 3) - 1) * 20)),
         total_water_alerts: isToday ? lowWaterCount : (lowWaterCount > 0 && dayOffset % 2 === 0 ? 1 : 0),
         total_visits: baseVisits > 0 ? Math.max(5, baseVisits + visitsVariance) : 12
       });
@@ -459,7 +461,12 @@ const Analysis = () => {
 
       setTempData(history.map(row => ({ date: row.date, value: Number(row.avg_temp) || 30 })));
       setHumidityData(history.map(row => ({ date: row.date, value: Number(row.avg_humidity) || 50 })));
-      setOdourData(history.map(row => ({ date: row.date, value: Number(row.avg_odour) || 35 })));
+      setOdourData(history.map(row => {
+        const o = Number(row.avg_odour ?? row.value) || 35;
+        const n = Number(row.avg_nh3 ?? row.nh3) || (baseLiveValues.nh3 || 825);
+        const h = Number(row.avg_h2s ?? row.h2s) || (baseLiveValues.h2s || 1055);
+        return { date: row.date, value: o, odour: o, nh3: n, h2s: h };
+      }));
       setWaterData(history.map(row => ({ date: row.date, value: Number(row.total_water_alerts) || 0 })));
       setUsageData(history.map(row => ({ date: row.date, value: Number(row.total_visits) || 15 })));
     } catch (error) {
@@ -467,7 +474,12 @@ const Analysis = () => {
       const history = generateFallbackAnalytics(customMachine, mList, customRo, customFrom, customTo);
       setTempData(history.map(row => ({ date: row.date, value: Number(row.avg_temp) || 30 })));
       setHumidityData(history.map(row => ({ date: row.date, value: Number(row.avg_humidity) || 50 })));
-      setOdourData(history.map(row => ({ date: row.date, value: Number(row.avg_odour) || 35 })));
+      setOdourData(history.map(row => {
+        const o = Number(row.avg_odour ?? row.value) || 35;
+        const n = Number(row.avg_nh3 ?? row.nh3) || (baseLiveValues.nh3 || 825);
+        const h = Number(row.avg_h2s ?? row.h2s) || (baseLiveValues.h2s || 1055);
+        return { date: row.date, value: o, odour: o, nh3: n, h2s: h };
+      }));
       setWaterData(history.map(row => ({ date: row.date, value: Number(row.total_water_alerts) || 0 })));
       setUsageData(history.map(row => ({ date: row.date, value: Number(row.total_visits) || 15 })));
     }
@@ -765,77 +777,101 @@ const Analysis = () => {
 
     // 5. Weekly View (Last 7 Days)
     if (timeframe === 'Weekly') {
+      let slice = [];
       if (Array.isArray(rawHistory) && rawHistory.length >= 7) {
-        return rawHistory.slice(-7);
-      }
-      if (Array.isArray(rawHistory) && rawHistory.length > 0) {
-        return rawHistory;
-      }
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return days.map((day, idx) => {
-        const offset = ((idx * 3) % 5) - 2;
-        let val = baseVal;
-        if (metricType === 'temp') {
-          val = Math.round((baseVal + offset * 0.3) * 10) / 10;
-        } else if (metricType === 'water') {
-          val = baseVal > 0 && idx % 3 === 0 ? 1 : 0;
-        } else if (metricType === 'usage') {
-          val = (!baseVal || baseVal <= 0) ? 25 : Math.max(10, baseVal + offset * 4);
-        } else {
-          val = Math.max(5, baseVal + offset);
-        }
-        if (metricType === 'odour') {
-          const nh3Val = Math.round((baseLiveValues.nh3 || 825) + offset * 2);
-          const h2sVal = Math.round((baseLiveValues.h2s || 1055) - offset * 2);
-          return { date: day, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
-        }
-        return { date: day, value: val };
-      });
-    }
-
-    // 6. Monthly View / FY
-    if (timeframe === 'Monthly' || timeframe === 'FY') {
-      if (timeframe === 'FY' || filterType === 'Financial Year') {
-        const fyMonths = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
-        return fyMonths.map((m, idx) => {
-          const offset = ((idx * 2) % 4) - 1;
+        slice = rawHistory.slice(-7);
+      } else if (Array.isArray(rawHistory) && rawHistory.length > 0) {
+        slice = rawHistory;
+      } else {
+        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        slice = days.map((day, idx) => {
+          const offset = ((idx * 3) % 5) - 2;
           let val = baseVal;
           if (metricType === 'temp') {
-            val = Math.round((baseVal + offset * 0.5) * 10) / 10;
+            val = Math.round((baseVal + offset * 0.3) * 10) / 10;
           } else if (metricType === 'water') {
-            val = baseVal > 0 ? (idx % 3 === 1 ? 1 : 0) : 0;
+            val = baseVal > 0 && idx % 3 === 0 ? 1 : 0;
           } else if (metricType === 'usage') {
-            val = Math.max(50, (baseVal || 30) * 8 + (offset * 15));
+            val = (!baseVal || baseVal <= 0) ? 25 : Math.max(10, baseVal + offset * 4);
           } else {
-            val = Math.max(5, baseVal + offset);
+            val = Math.max(50, Math.round(baseVal + offset * 35));
           }
-          if (metricType === 'odour') {
-            const nh3Val = (baseLiveValues.nh3 || 825) + offset * 3;
-            const h2sVal = (baseLiveValues.h2s || 1055) - offset * 3;
-            return { date: m, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
-          }
-          return { date: m, value: val };
+          return { date: day, value: val };
         });
       }
-      const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      return weeks.map((w, idx) => {
-        const offset = ((idx * 2) % 4) - 1;
+
+      if (metricType === 'odour') {
+        return slice.map((item, idx) => {
+          const val = Number(item.odour ?? item.value) || (baseLiveValues.odour || 1078);
+          const nh3Val = Number(item.nh3) || Math.round((baseLiveValues.nh3 || 825) + (((idx * 7) % 5) - 2) * 35);
+          const h2sVal = Number(item.h2s) || Math.round((baseLiveValues.h2s || 1055) - (((idx * 7) % 5) - 2) * 28);
+          return {
+            ...item,
+            value: val,
+            odour: val,
+            nh3: nh3Val,
+            h2s: h2sVal
+          };
+        });
+      }
+      return slice;
+    }
+
+    // 6. Monthly View (Last 30 Days)
+    if (timeframe === 'Monthly') {
+      const days30 = [];
+      const baseD = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(baseD);
+        d.setDate(baseD.getDate() - i * 5);
+        const dayLabel = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        const wave = Math.sin((6 - i) * 1.15);
         let val = baseVal;
         if (metricType === 'temp') {
-          val = Math.round((baseVal + offset * 0.4) * 10) / 10;
+          val = Math.round((baseVal + wave * 1.8) * 10) / 10;
         } else if (metricType === 'water') {
-          val = baseVal > 0 ? (idx % 2 === 1 ? 1 : 0) : 0;
+          val = baseVal > 0 ? (i % 3 === 0 ? 1 : 0) : 0;
         } else if (metricType === 'usage') {
-          val = Math.max(30, (baseVal || 30) * 5 + (offset * 12));
+          val = Math.max(20, Math.round((baseVal || 35) + wave * 12));
         } else {
-          val = Math.max(5, baseVal + offset);
+          val = Math.max(100, Math.round(baseVal + wave * 140));
         }
+
         if (metricType === 'odour') {
-          const nh3Val = (baseLiveValues.nh3 || 825) + offset * 2;
-          const h2sVal = (baseLiveValues.h2s || 1055) - offset * 2;
-          return { date: w, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
+          const nh3Val = Math.max(50, Math.round((baseLiveValues.nh3 || 825) + wave * 95));
+          const h2sVal = Math.max(50, Math.round((baseLiveValues.h2s || 1055) - wave * 80));
+          days30.push({ date: dayLabel, value: val, odour: val, nh3: nh3Val, h2s: h2sVal });
+        } else {
+          days30.push({ date: dayLabel, value: val });
         }
-        return { date: w, value: val };
+      }
+      return days30;
+    }
+
+    // 7. Financial Year (FY: Apr to Mar)
+    if (timeframe === 'FY') {
+      const fyMonths = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
+      const seasonalFactors = [-0.08, -0.04, 0.05, 0.08, 0.02, -0.05, 0.04, 0.09, 0.03, -0.06, -0.02, 0.07];
+      return fyMonths.map((m, idx) => {
+        const factor = seasonalFactors[idx];
+        let val = baseVal;
+        if (metricType === 'temp') {
+          const tempShift = [2.5, 4.0, 3.5, 1.0, 0.5, 0.0, -1.0, -2.5, -4.0, -4.5, -2.0, 1.0][idx];
+          val = Math.round((baseVal + tempShift) * 10) / 10;
+        } else if (metricType === 'water') {
+          val = baseVal > 0 ? (idx % 3 === 1 ? 1 : 0) : 0;
+        } else if (metricType === 'usage') {
+          val = Math.max(40, Math.round((baseVal || 30) * 15 * (1 + factor)));
+        } else {
+          val = Math.max(100, Math.round(baseVal * (1 + factor)));
+        }
+
+        if (metricType === 'odour') {
+          const nh3Val = Math.max(50, Math.round((baseLiveValues.nh3 || 825) * (1 + factor * 0.8)));
+          const h2sVal = Math.max(50, Math.round((baseLiveValues.h2s || 1055) * (1 - factor * 0.7)));
+          return { date: m, value: val, odour: val, nh3: nh3Val, h2s: h2sVal };
+        }
+        return { date: m, value: val };
       });
     }
 
