@@ -726,47 +726,146 @@ const Reports = () => {
     }
 
     if (activeTab === 'Usage Analytics') {
-      const rows = [];
-      targetMachines.forEach(m => {
-        const ro = roList.find(r => String(r.id) === String(m.ro_id || m.roId) || String(r.db_id) === String(m.ro_id || m.roId));
-        const roName = ro?.name || m.roName || 'RO Location';
-        const omcName = getOmcName(m.ro_id || m.roId, m);
-        const visits = getMachineVisits(m) || 0;
-        const mInstallDate = getMachineInstallDate(m) || todayYMD;
-
-        targetDates.forEach((dateStr, dIdx) => {
-          if (dateStr >= mInstallDate && dateStr <= todayYMD) {
-            const seed = (String(m.name || m.id).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) + (dIdx * 13)) % 20;
-            let dayVisits = 0;
-            if (dateStr === todayYMD) {
-              dayVisits = visits;
-            } else if (visits > 0) {
-              const variance = (seed % 7) - 3;
-              dayVisits = Math.max(5, Math.round(visits * 0.85) + variance);
-            } else {
-              dayVisits = 15 + (seed % 10);
-            }
-            rows.push({
-              machineId: m.name || m.id,
-              date: dateStr,
-              roName: roName,
-              ro_id: m.ro_id || m.roId,
-              omcName: omcName,
-              val1: dayVisits,
-              val2: 'Normal'
-            });
+      try {
+        const params = {};
+        if (selectedMachine !== 'All') params.machineId = selectedMachine;
+        if (selectedRo !== 'All') params.roId = selectedRo;
+        if (selectedClient !== 'All') params.omcId = selectedClient;
+        if (filterType === 'Date Range') {
+          if (fromDate) params.startDate = fromDate;
+          if (toDate) params.endDate = toDate;
+        } else if (filterType === 'Financial Year') {
+          let fyStart = '2026-04-01';
+          let fyEnd = todayYMD;
+          if (financialYear === 'Previous FY (2025-26)') {
+            fyStart = '2025-04-01';
+            fyEnd = '2026-03-31';
+          } else if (financialYear === 'All Time') {
+            fyStart = '2020-01-01';
+            fyEnd = todayYMD;
           }
+          params.startDate = fyStart;
+          params.endDate = fyEnd;
+        }
+
+        const res = await api.get('/analytics/footfall-reports', { params }).catch(() => ({ data: { data: [] } }));
+        const liveFootfallRows = res.data?.data || [];
+
+        const rows = [];
+        const seenRowKeys = new Set();
+
+        // 1. Add all direct database footfall records
+        liveFootfallRows.forEach(r => {
+          const ro = roList.find(rItem => String(rItem.id) === String(r.ro_id) || String(rItem.db_id) === String(r.ro_id));
+          const rowKey = `${String(r.machineId).toLowerCase().trim()}_${r.date}`;
+          seenRowKeys.add(rowKey);
+          rows.push({
+            machineId: r.machineId,
+            date: r.date,
+            roName: r.roName || ro?.name || 'RO Location',
+            ro_id: r.ro_id,
+            omcName: r.omcName || getOmcName(r.ro_id, { name: r.machineId }),
+            val1: Number(r.visits) || 0,
+            val2: 'Normal'
+          });
         });
-      });
 
-      // Sort descending: newest date first, then by machine name
-      rows.sort((a, b) => {
-        const dDiff = String(b.date).localeCompare(String(a.date));
-        if (dDiff !== 0) return dDiff;
-        return String(a.machineId).localeCompare(String(b.machineId));
-      });
+        // 2. Ensure all filtered target machines are present for today with 0 visits if not visited yet
+        if (!targetDates.length || targetDates.includes(todayYMD)) {
+          targetMachines.forEach(m => {
+            const mName = m.name || m.id;
+            const key = `${String(mName).toLowerCase().trim()}_${todayYMD}`;
+            if (!seenRowKeys.has(key)) {
+              seenRowKeys.add(key);
+              const ro = roList.find(r => String(r.id) === String(m.ro_id || m.roId) || String(r.db_id) === String(m.ro_id || m.roId));
+              const roName = ro?.name || m.roName || 'RO Location';
+              const omcName = getOmcName(m.ro_id || m.roId, m);
+              rows.push({
+                machineId: mName,
+                date: todayYMD,
+                roName: roName,
+                ro_id: m.ro_id || m.roId,
+                omcName: omcName,
+                val1: 0,
+                val2: 'Normal'
+              });
+            }
+          });
+        }
 
-      setReportData(rows);
+        // 3. Fallback: If no records exist in DB at all, populate from dashboard daily footfall rather than fake random numbers
+        if (liveFootfallRows.length === 0) {
+          const statsRes = await api.get('/analytics/dashboard-stats').catch(() => ({ data: { data: {} } }));
+          const dailyFootfall = statsRes.data?.data?.dailyFootfall || [];
+          const todayUsers = Number(statsRes.data?.data?.todayUsers) || 0;
+
+          // Map daily footfall by YMD date
+          const dfMap = {};
+          const now = new Date();
+          const mNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          for (let i = 0; i <= 6; i++) {
+            const d = new Date(now);
+            d.setDate(now.getDate() - i);
+            const ymd = formatDateToYMD(d);
+            const dayLabel = `${mNames[d.getMonth()]} ${String(d.getDate()).padStart(2, '0')}`;
+            const matched = dailyFootfall.find(df => df.day === dayLabel || df.fullDay?.includes(dayLabel));
+            let u = matched ? Number(matched.users) || 0 : 0;
+            if (i === 0 && todayUsers > u) u = todayUsers;
+            dfMap[ymd] = u;
+          }
+
+          const totalLifetime = targetMachines.reduce((s, m) => s + (getMachineVisits(m) || 0), 0);
+
+          targetDates.forEach(dateStr => {
+            const dayTotal = dfMap[dateStr] || 0;
+            targetMachines.forEach(m => {
+              const mName = m.name || m.id;
+              const ro = roList.find(r => String(r.id) === String(m.ro_id || m.roId) || String(r.db_id) === String(m.ro_id || m.roId));
+              const roName = ro?.name || m.roName || 'RO Location';
+              const omcName = getOmcName(m.ro_id || m.roId, m);
+              const mVisits = getMachineVisits(m) || 0;
+
+              let dayVisits = 0;
+              if (dayTotal > 0) {
+                if (totalLifetime > 0) {
+                  dayVisits = Math.round((mVisits / totalLifetime) * dayTotal);
+                } else if (targetMachines.length === 1) {
+                  dayVisits = dayTotal;
+                }
+              }
+
+              const mInstallDate = getMachineInstallDate(m) || todayYMD;
+              if (dateStr >= mInstallDate && dateStr <= todayYMD) {
+                const key = `${String(mName).toLowerCase().trim()}_${dateStr}`;
+                if (!seenRowKeys.has(key)) {
+                  seenRowKeys.add(key);
+                  rows.push({
+                    machineId: mName,
+                    date: dateStr,
+                    roName: roName,
+                    ro_id: m.ro_id || m.roId,
+                    omcName: omcName,
+                    val1: dayVisits,
+                    val2: 'Normal'
+                  });
+                }
+              }
+            });
+          });
+        }
+
+        // Sort descending: newest date first, then by machine name
+        rows.sort((a, b) => {
+          const dDiff = String(b.date).localeCompare(String(a.date));
+          if (dDiff !== 0) return dDiff;
+          return String(a.machineId).localeCompare(String(b.machineId));
+        });
+
+        setReportData(rows);
+      } catch (err) {
+        console.error("Error generating usage analytics report:", err);
+      }
+      return;
     } else {
       // Hygiene & Alerts Report
       const historyRows = [];

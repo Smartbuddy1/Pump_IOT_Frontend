@@ -3,6 +3,7 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LayoutDashboard, Users, Folder, Monitor, LogOut, FileText, Sun, Moon, Settings, User, Phone, Shield, Menu, X, Activity, PieChart, Tag, ClipboardList, Radio, Building, MapPin, Cpu, Bell, TrendingUp, AlertTriangle, MessageSquare } from 'lucide-react';
 import Footer from './Footer';
+import aaryaLogo from '../assets/aarya_logo.png';
 import { LOGO_LEFT_BASE64 } from '../utils/logoAssets';
 
 const Layout = () => {
@@ -105,9 +106,9 @@ const Layout = () => {
             margin: '0 auto'
           }}>
             <img 
-              src={LOGO_LEFT_BASE64 || `${import.meta.env.BASE_URL}logo_left.jpeg`} 
+              src={aaryaLogo || LOGO_LEFT_BASE64} 
               onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = LOGO_LEFT_BASE64; }} 
-              alt="E2Toilet SmartBuddy Logo" 
+              alt="Aarya Innovtech Logo" 
               style={{ 
                 width: '100%', 
                 height: 'auto', 

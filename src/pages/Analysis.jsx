@@ -131,7 +131,22 @@ const formatTelemetryPoint = (r, metricType, mode = 'full') => {
   if (metricType === 'temp') val = Number(r.temp) || 0;
   else if (metricType === 'humidity') val = Number(r.humidity) || 0;
   else if (metricType === 'odour') val = Number(r.vocGas) || 0;
-  else if (metricType === 'water') val = isWaterAlert(r.water ?? r.live_water ?? r.waterLevel) ? 1 : 0;
+  else if (metricType === 'water') {
+    const rawW = r.water ?? r.live_water ?? r.waterLevel;
+    if (typeof rawW === 'string') {
+      const cleanW = rawW.replace('%', '').trim().toLowerCase();
+      if (cleanW === 'low') val = 15;
+      else if (cleanW === 'normal' || cleanW === 'ok' || cleanW === 'full') val = 85;
+      else {
+        const num = parseFloat(cleanW);
+        val = isNaN(num) ? 80 : num;
+      }
+    } else if (typeof rawW === 'number') {
+      val = rawW <= 1 ? (rawW === 0 ? 10 : 85) : rawW;
+    } else {
+      val = 80;
+    }
+  }
   else if (metricType === 'usage') val = 1;
 
   if (metricType === 'odour') {
@@ -398,6 +413,16 @@ const Analysis = () => {
       return rawW === 'low' || (!isNaN(numW) && numW <= 25);
     }).length;
 
+    const baseWater = Math.round(
+      relevantMachines.reduce((sum, m) => {
+        const rawW = String(m.live_water ?? m.liveWater ?? 'Normal').replace('%', '').trim().toLowerCase();
+        if (rawW === 'low') return sum + 15;
+        if (rawW === 'normal' || rawW === 'ok' || rawW === 'full') return sum + 85;
+        const num = parseFloat(rawW);
+        return sum + (!isNaN(num) ? num : 80);
+      }, 0) / count
+    );
+
     const baseVisits = target
       ? (Number(target.visits) || Number(target.usage) || 28)
       : relevantMachines.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 15), 0);
@@ -421,6 +446,7 @@ const Analysis = () => {
         avg_odour: Math.max(10, Math.min(1800, baseOdour + odourVariance)),
         avg_nh3: Math.max(10, Math.min(1500, (baseLiveValues.nh3 || 825) + ((dayOffset % 3) - 1) * 25)),
         avg_h2s: Math.max(10, Math.min(1500, (baseLiveValues.h2s || 1055) - ((dayOffset % 3) - 1) * 20)),
+        avg_water: Math.max(5, Math.min(100, Math.round(baseWater + (isToday ? 0 : (dayOffset % 2 === 1 ? -2 : 3))))),
         total_water_alerts: isToday ? lowWaterCount : (lowWaterCount > 0 && dayOffset % 2 === 0 ? 1 : 0),
         total_visits: baseVisits > 0 ? Math.max(5, baseVisits + visitsVariance) : 12
       });
@@ -467,7 +493,7 @@ const Analysis = () => {
         const h = Number(row.avg_h2s ?? row.h2s) || (baseLiveValues.h2s || 1055);
         return { date: row.date, value: o, odour: o, nh3: n, h2s: h };
       }));
-      setWaterData(history.map(row => ({ date: row.date, value: Number(row.total_water_alerts) || 0 })));
+      setWaterData(history.map(row => ({ date: row.date, value: Number(row.avg_water ?? row.water) || (Number(row.total_water_alerts) > 0 ? 15 : 80) })));
       setUsageData(history.map(row => ({ date: row.date, value: Number(row.total_visits) || 15 })));
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
@@ -480,7 +506,7 @@ const Analysis = () => {
         const h = Number(row.avg_h2s ?? row.h2s) || (baseLiveValues.h2s || 1055);
         return { date: row.date, value: o, odour: o, nh3: n, h2s: h };
       }));
-      setWaterData(history.map(row => ({ date: row.date, value: Number(row.total_water_alerts) || 0 })));
+      setWaterData(history.map(row => ({ date: row.date, value: Number(row.avg_water ?? row.water) || (Number(row.total_water_alerts) > 0 ? 15 : 80) })));
       setUsageData(history.map(row => ({ date: row.date, value: Number(row.total_visits) || 15 })));
     }
   };
@@ -642,10 +668,21 @@ const Analysis = () => {
     }, 0) / count) || 35;
     const nh3 = latestLive ? (Number(latestLive.nh3) || 825) : 825;
     const h2s = latestLive ? (Number(latestLive.h2s) || 1055) : 1055;
+    const getWaterLevel = (w) => {
+      if (w === undefined || w === null) return 80;
+      const cleanW = String(w).replace('%', '').trim().toLowerCase();
+      if (cleanW === 'low') return 15;
+      if (cleanW === 'normal' || cleanW === 'ok' || cleanW === 'full') return 85;
+      const num = parseFloat(cleanW);
+      return !isNaN(num) ? num : 80;
+    };
+    const waterLevel = latestLive 
+      ? getWaterLevel(latestLive.water ?? latestLive.liveWater) 
+      : (Math.round(relevant.reduce((sum, m) => sum + getWaterLevel(m.live_water ?? m.liveWater), 0) / count) || 80);
     const waterAlerts = latestLive ? (isWaterAlert(latestLive.water ?? latestLive.liveWater) ? 1 : 0) : relevant.filter(m => isWaterAlert(m.live_water ?? m.liveWater)).length;
     const visits = liveReadings.length || relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0) || 352;
 
-    return { temp, hum, odour, nh3, h2s, waterAlerts, visits };
+    return { temp, hum, odour, nh3, h2s, water: waterLevel, waterAlerts, visits };
   }, [filteredMachinesForDropdown, selectedMachine, machines, liveReadings]);
 
   const getTimeframeSubtitle = (timeframe, metricLabel) => {
@@ -688,7 +725,7 @@ const Analysis = () => {
         const pt = new Date(now.getTime() - i * 5 * 60 * 1000);
         const timeLabel = pt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
         let val = baseVal;
-        if (metricType === 'water') val = baseVal > 0 ? (i % 4 === 0 ? 1 : 0) : 0;
+        if (metricType === 'water') val = Math.max(5, Math.min(100, Math.round(baseVal + ((i % 3) - 1) * 2)));
         else if (metricType === 'usage') val = Math.max(1, Math.round((baseVal || 25) / 12));
         else val = Math.round((baseVal + ((i % 3) - 1) * 0.4) * 10) / 10;
         points.push({ date: timeLabel, time: timeLabel, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
@@ -717,7 +754,7 @@ const Analysis = () => {
         const displayH = h % 12 === 0 ? 12 : h % 12;
         const timeLabel = `${String(displayH).padStart(2, '0')}:00 ${ampm}`;
         let val = baseVal;
-        if (metricType === 'water') val = baseVal > 0 ? (h % 3 === 0 ? 1 : 0) : 0;
+        if (metricType === 'water') val = Math.max(5, Math.min(100, Math.round(baseVal + ((h % 3) - 1) * 3)));
         else if (metricType === 'usage') val = Math.max(2, Math.round((baseVal || 30) / 10));
         else val = Math.round((baseVal + ((h % 4) - 1.5) * 0.5) * 10) / 10;
         points.push({ date: timeLabel, time: timeLabel, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
@@ -745,7 +782,7 @@ const Analysis = () => {
         const displayH = h % 12 === 0 ? 12 : h % 12;
         const timeLabel = `${yesterdayStr} ${String(displayH).padStart(2, '0')}:00 ${ampm}`;
         let val = baseVal;
-        if (metricType === 'water') val = baseVal > 0 ? (h % 4 === 0 ? 1 : 0) : 0;
+        if (metricType === 'water') val = Math.max(5, Math.min(100, Math.round(baseVal + ((h % 3) - 1) * 2)));
         else if (metricType === 'usage') val = Math.max(3, Math.round((baseVal || 30) / 8));
         else val = Math.round((baseVal + ((h % 3) - 1) * 0.4) * 10) / 10;
         points.push({ date: timeLabel, time: timeLabel, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
@@ -767,7 +804,7 @@ const Analysis = () => {
       ];
       spans.forEach((lbl, idx) => {
         let val = baseVal;
-        if (metricType === 'water') val = baseVal > 0 ? (idx % 3 === 0 ? 1 : 0) : 0;
+        if (metricType === 'water') val = Math.max(5, Math.min(100, Math.round(baseVal + ((idx % 3) - 1) * 3)));
         else if (metricType === 'usage') val = Math.max(5, Math.round((baseVal || 40) / 8) + (idx % 3));
         else val = Math.round((baseVal + ((idx % 3) - 1) * 0.5) * 10) / 10;
         points.push({ date: lbl, time: lbl, value: val, odour: val, nh3: baseLiveValues.nh3 || 825, h2s: baseLiveValues.h2s || 1055 });
@@ -790,7 +827,7 @@ const Analysis = () => {
           if (metricType === 'temp') {
             val = Math.round((baseVal + offset * 0.3) * 10) / 10;
           } else if (metricType === 'water') {
-            val = baseVal > 0 && idx % 3 === 0 ? 1 : 0;
+            val = Math.max(5, Math.min(100, Math.round(baseVal + offset * 3)));
           } else if (metricType === 'usage') {
             val = (!baseVal || baseVal <= 0) ? 25 : Math.max(10, baseVal + offset * 4);
           } else {
@@ -830,7 +867,7 @@ const Analysis = () => {
         if (metricType === 'temp') {
           val = Math.round((baseVal + wave * 1.8) * 10) / 10;
         } else if (metricType === 'water') {
-          val = baseVal > 0 ? (i % 3 === 0 ? 1 : 0) : 0;
+          val = Math.max(5, Math.min(100, Math.round(baseVal + wave * 6)));
         } else if (metricType === 'usage') {
           val = Math.max(20, Math.round((baseVal || 35) + wave * 12));
         } else {
@@ -859,7 +896,7 @@ const Analysis = () => {
           const tempShift = [2.5, 4.0, 3.5, 1.0, 0.5, 0.0, -1.0, -2.5, -4.0, -4.5, -2.0, 1.0][idx];
           val = Math.round((baseVal + tempShift) * 10) / 10;
         } else if (metricType === 'water') {
-          val = baseVal > 0 ? (idx % 3 === 1 ? 1 : 0) : 0;
+          val = Math.max(10, Math.min(100, Math.round(baseVal * (1 + factor * 0.1))));
         } else if (metricType === 'usage') {
           val = Math.max(40, Math.round((baseVal || 30) * 15 * (1 + factor)));
         } else {
@@ -889,7 +926,7 @@ const Analysis = () => {
   const displayedTempData = getTimeframeData('temp', chartTimeframes.temp, tempData, baseLiveValues.temp);
   const displayedHumidityData = getTimeframeData('humidity', chartTimeframes.humidity, humidityData, baseLiveValues.hum);
   const displayedOdourData = getTimeframeData('odour', chartTimeframes.odour, odourData, baseLiveValues.odour);
-  const displayedWaterData = getTimeframeData('water', chartTimeframes.water, waterData, baseLiveValues.waterAlerts);
+  const displayedWaterData = getTimeframeData('water', chartTimeframes.water, waterData, baseLiveValues.water);
   const displayedUsageData = getTimeframeData('usage', chartTimeframes.usage, usageData, baseLiveValues.visits);
 
   // Stats for Share Market Header Strips
@@ -967,19 +1004,19 @@ const Analysis = () => {
         };
       case 'water':
         return {
-          title: 'Water Supply & Low Alerts',
-          subtitle: getTimeframeSubtitle(chartTimeframes.water, 'Water Level & Tank Alerts'),
+          title: 'Water Level Performance',
+          subtitle: getTimeframeSubtitle(chartTimeframes.water, 'Water Level Capacity & Refill Trend'),
           icon: <Droplets size={22} color="#3b82f6" />,
           color: '#3b82f6',
           gradientId: 'modalWaterGrad',
           data: displayedWaterData,
-          yDomain: [0, 4],
-          yUnit: ' Alerts',
+          yDomain: [0, 100],
+          yUnit: '%',
           allowDecimals: false,
           stats: waterStats,
-          benchmark: '0 Alerts Normal',
+          benchmark: 'Refill Threshold: <= 20%',
           referenceLines: [
-            { y: 1, stroke: '#ef4444', label: 'Refill Warning' }
+            { y: 20, stroke: '#ef4444', label: 'Refill Warning (20%)' }
           ]
         };
       case 'usage':
@@ -1487,12 +1524,12 @@ const Analysis = () => {
             <Droplets size={20} />
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Water Supply</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Water Level</div>
             <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#3b82f6' }}>
-              {baseLiveValues.waterAlerts > 0 ? 'Low Tank' : 'Adequate'}
+              {baseLiveValues.water}% <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)' }}>({baseLiveValues.water <= 20 ? 'Low' : 'Adequate'})</span>
             </div>
-            <div style={{ fontSize: '0.7rem', color: baseLiveValues.waterAlerts > 0 ? '#ef4444' : '#10b981', fontWeight: '700' }}>
-              {baseLiveValues.waterAlerts > 0 ? '⚠️ Refill Warning' : '🟢 Reservoir 100% Safe'}
+            <div style={{ fontSize: '0.7rem', color: baseLiveValues.water <= 20 ? '#ef4444' : '#10b981', fontWeight: '700' }}>
+              {baseLiveValues.water <= 20 ? '⚠️ Refill Warning' : '🟢 Reservoir 100% Safe'}
             </div>
           </div>
         </div>
@@ -1892,28 +1929,30 @@ const Analysis = () => {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                   <h3 style={{ fontSize: '1.05rem', color: 'var(--text-primary)', fontWeight: '800', margin: 0 }}>
-                    Water Level & Alerts
+                    Water Level
                   </h3>
                   <span style={{ fontSize: '1.45rem', fontWeight: '800', color: '#3b82f6', letterSpacing: '-0.4px' }}>
-                    {waterStats.current} <span style={{ fontSize: '0.8rem', fontWeight: '600' }}>Alerts</span>
+                    {waterStats.current}%
                   </span>
                   <span style={{ 
                     fontSize: '0.72rem', 
                     fontWeight: '700', 
                     padding: '0.15rem 0.55rem', 
                     borderRadius: '12px', 
-                    background: waterStats.current === 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                    color: waterStats.current === 0 ? '#059669' : '#dc2626'
+                    background: waterStats.current > 20 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                    color: waterStats.current > 20 ? '#059669' : '#dc2626'
                   }}>
-                    {waterStats.current === 0 ? '🟢 100% Water Supply Safe' : '⚠️ Refill Warning'}
+                    {waterStats.current > 20 ? '🟢 Normal Level' : '⚠️ Refill Warning (Low)'}
                   </span>
                 </div>
 
                 {/* Stock Ticker Strip */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', flexWrap: 'wrap' }}>
-                  <span>Incidents: <strong style={{ color: 'var(--text-primary)' }}>{(displayedWaterData || []).reduce((a, b) => a + (Number(b.value) || 0), 0)} Total</strong></span>
+                  <span>Avg Level: <strong style={{ color: 'var(--text-primary)' }}>{waterStats.mean}%</strong></span>
                   <span>•</span>
-                  <span>Supply Status: <strong style={{ color: '#10b981' }}>Normal Continuous</strong></span>
+                  <span>Range: <strong style={{ color: 'var(--text-primary)' }}>{waterStats.min}% - {waterStats.max}%</strong></span>
+                  <span>•</span>
+                  <span>Supply Status: <strong style={{ color: waterStats.current > 20 ? '#10b981' : '#ef4444' }}>{waterStats.current > 20 ? 'Normal Continuous' : 'Low Level Warning'}</strong></span>
                 </div>
               </div>
             </div>
@@ -1942,11 +1981,11 @@ const Analysis = () => {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
-                <YAxis allowDecimals={false} domain={[0, 4]} axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
-                <RechartsTooltip content={<StockTooltip unit="Alerts" metricName="Water Alerts" benchmark="0 Alerts Normal" />} />
+                <YAxis domain={[0, 100]} unit="%" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <RechartsTooltip content={<StockTooltip unit="%" metricName="Water Level" benchmark="Refill Threshold: <= 20%" />} />
                 
                 {/* Benchmark Lines */}
-                <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1} label={{ value: '⚠️ Alert Line', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 700 }} />
+                <ReferenceLine y={20} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1} label={{ value: '⚠️ Refill Line (20%)', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 700 }} />
 
                 <Area
                   type="monotone"

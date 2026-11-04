@@ -122,7 +122,7 @@ const OMCDashboard = () => {
     // High-performance real-time telemetry state update without server re-fetching
     const handleLiveTelemetry = (data) => {
       if (!data || !data.machineId) return;
-      setRawMachines(prev => (Array.isArray(prev) ? prev : []).map(m => {
+      setAllMachines(prev => (Array.isArray(prev) ? prev : []).map(m => {
         const mName = String(m.name || m.id || '').toLowerCase().trim();
         const targetId = String(data.machineId || '').toLowerCase().trim();
         if (mName === targetId || mName.replace(/o/g, '0') === targetId.replace(/o/g, '0')) {
@@ -158,22 +158,27 @@ const OMCDashboard = () => {
       debouncedFetchData();
     };
 
-    socket.on('live_data_update', handleLiveTelemetry);
-    socket.on('new_alert', debouncedFetchData);
-    socket.on('new_feedback', debouncedFetchData);
-    socket.on('footfall_update', handleFootfallUpdate);
-    socket.on('person_in', handleFootfallUpdate);
+    if (socket) {
+      socket.on('live_data_update', handleLiveTelemetry);
+      socket.on('new_alert', debouncedFetchData);
+      socket.on('new_feedback', debouncedFetchData);
+      socket.on('footfall_update', handleFootfallUpdate);
+      socket.on('person_in', handleFootfallUpdate);
+    }
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('app_data_updated', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
       window.removeEventListener('focus', handleDataChanged);
       window.removeEventListener('pageshow', handleDataChanged);
-      socket.off('live_data_update', handleLiveTelemetry);
-      socket.off('new_alert', debouncedFetchData);
-      socket.off('new_feedback', debouncedFetchData);
-      socket.off('footfall_update', handleFootfallUpdate);
-      socket.off('person_in', handleFootfallUpdate);
+      if (socket) {
+        socket.off('live_data_update', handleLiveTelemetry);
+        socket.off('new_alert', debouncedFetchData);
+        socket.off('new_feedback', debouncedFetchData);
+        socket.off('footfall_update', handleFootfallUpdate);
+        socket.off('person_in', handleFootfallUpdate);
+      }
     };
   }, [location.key, location.pathname, user, socket]);
 
@@ -267,8 +272,7 @@ const OMCDashboard = () => {
 
   // 7-day footfall ending TODAY with accurate match to database telemetry & fallback
   const chartFootfallData = (() => {
-    const totalMachineVisits = (machinesList || []).reduce((acc, m) => acc + (Number(m.visits) || 0), 0);
-    const effectiveToday = usersToday > 0 ? usersToday : totalMachineVisits;
+    const effectiveToday = Number(usersToday) || 0;
 
     if (dailyFootfallData && dailyFootfallData.length > 0) {
       const updated = dailyFootfallData.map((item, idx) => {
@@ -315,9 +319,30 @@ const OMCDashboard = () => {
     return isWLowOrEmpty || hasWaterAlert;
   }).length;
 
+  const activeWithWaterAlert = filteredMachines.filter(m => {
+    const parentRo = (allRos || []).find(r => String(r.id) === String(m.ro_id || m.roId));
+    const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
+    if (isRoInactive) return false;
+    const s = String(m.status || '').trim().toUpperCase();
+    const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
+    if (!isActive) return false;
+    const cleanW = String(m.live_water || m.liveWater || '').replace('%', '').trim().toLowerCase();
+    const isWLowOrEmpty = cleanW === 'low' || cleanW === '0' || (parseInt(cleanW, 10) <= 20 && !isNaN(parseInt(cleanW, 10)));
+    const hasWaterAlert = filteredAlerts.some(a => 
+      (String(a.machineId || a.machine_id).toLowerCase() === String(m.name || m.id).toLowerCase()) &&
+      a.type === 'Water' && a.status !== 'Resolved'
+    );
+    return isWLowOrEmpty || hasWaterAlert;
+  }).length;
+
+  const normalActive = Math.max(0, activeMachinesCount - activeWithWaterAlert);
+  const inactiveWithWaterAlert = Math.max(0, waterAlertCount - activeWithWaterAlert);
+  const normalInactive = Math.max(0, offlineCount - inactiveWithWaterAlert);
+
   const machineStatusData = [
-    { name: 'Active', value: activeMachinesCount, color: '#10b981' },
-    { name: 'Inactive', value: offlineCount, color: '#ef4444' },
+    { name: 'Active', value: normalActive, color: '#10b981' },
+    { name: 'Water Alert', value: waterAlertCount, color: '#0284c7' },
+    { name: 'Inactive', value: normalInactive, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
   const statusSummaryBoxes = [

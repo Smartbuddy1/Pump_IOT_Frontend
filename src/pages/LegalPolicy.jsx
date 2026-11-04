@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Shield, FileText, RefreshCw, Mail, Phone, MapPin, ArrowLeft, Building2 } from 'lucide-react';
-import logoImg from '../assets/e2t_logo.jpeg';
+import logoImg from '../assets/smartbuddy.png';
 
 const LegalPolicy = () => {
   const location = useLocation();

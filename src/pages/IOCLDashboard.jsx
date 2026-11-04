@@ -201,8 +201,7 @@ const IOCLDashboard = () => {
 
   // 7-day footfall ending TODAY with accurate match to database telemetry & fallback
   const chartFootfallData = (() => {
-    const totalMachineVisits = (machinesList || []).reduce((acc, m) => acc + (Number(m.visits) || 0), 0);
-    const effectiveToday = usersToday > 0 ? usersToday : totalMachineVisits;
+    const effectiveToday = Number(usersToday) || 0;
 
     if (dailyFootfallData && dailyFootfallData.length > 0) {
       const updated = dailyFootfallData.map((item, idx) => {
@@ -249,11 +248,26 @@ const IOCLDashboard = () => {
     return cleanW === 'low' || (!isNaN(numW) && numW <= 20);
   }).length;
 
-  const normalActiveCount = activeMachinesCount;
+  const activeWithWaterAlert = machinesList.filter(m => {
+    const parentRo = (allRos || []).find(r => String(r.id) === String(m.ro_id || m.roId));
+    const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
+    if (isRoInactive) return false;
+    const s = String(m.status || '').trim().toUpperCase();
+    const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
+    if (!isActive) return false;
+    const cleanW = String(m.live_water || m.liveWater || '').replace('%', '').trim().toLowerCase();
+    const numW = parseInt(cleanW, 10);
+    return cleanW === 'low' || (!isNaN(numW) && numW <= 20);
+  }).length;
+
+  const normalActive = Math.max(0, activeMachinesCount - activeWithWaterAlert);
+  const inactiveWithWaterAlert = Math.max(0, waterLowCount - activeWithWaterAlert);
+  const normalInactive = Math.max(0, offlineCount - inactiveWithWaterAlert);
 
   const machineStatusData = [
-    { name: 'Active', value: activeMachinesCount, color: '#10b981' },
-    { name: 'Inactive', value: offlineCount, color: '#ef4444' },
+    { name: 'Active', value: normalActive, color: '#10b981' },
+    { name: 'Water Alert', value: waterLowCount, color: '#0284c7' },
+    { name: 'Inactive', value: normalInactive, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
   const statusSummaryBoxes = [

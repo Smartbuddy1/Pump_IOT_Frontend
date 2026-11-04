@@ -201,22 +201,27 @@ const SuperAdminDashboard = () => {
       debouncedFetchData();
     };
 
-    socket.on('live_data_update', handleLiveTelemetry);
-    socket.on('new_alert', debouncedFetchData);
-    socket.on('new_feedback', debouncedFetchData);
-    socket.on('footfall_update', handleFootfallUpdate);
-    socket.on('person_in', handleFootfallUpdate);
+    if (socket) {
+      socket.on('live_data_update', handleLiveTelemetry);
+      socket.on('new_alert', debouncedFetchData);
+      socket.on('new_feedback', debouncedFetchData);
+      socket.on('footfall_update', handleFootfallUpdate);
+      socket.on('person_in', handleFootfallUpdate);
+    }
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('app_data_updated', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
       window.removeEventListener('focus', handleDataChanged);
       window.removeEventListener('pageshow', handleDataChanged);
-      socket.off('live_data_update', handleLiveTelemetry);
-      socket.off('new_alert', debouncedFetchData);
-      socket.off('new_feedback', debouncedFetchData);
-      socket.off('footfall_update', handleFootfallUpdate);
-      socket.off('person_in', handleFootfallUpdate);
+      if (socket) {
+        socket.off('live_data_update', handleLiveTelemetry);
+        socket.off('new_alert', debouncedFetchData);
+        socket.off('new_feedback', debouncedFetchData);
+        socket.off('footfall_update', handleFootfallUpdate);
+        socket.off('person_in', handleFootfallUpdate);
+      }
     };
   }, [location.key, location.pathname, socket]);
 
@@ -288,10 +293,27 @@ const SuperAdminDashboard = () => {
     return cleanW === 'low' || (!isNaN(numW) && numW <= 20);
   }).length;
 
-  // Active machines shown in emerald green, Inactive in red (matching OMC Admin dashboard)
+  const activeWithWaterAlert = machinesList.filter(m => {
+    const parentRo = (rosList || []).find(r => String(r.id) === String(m.ro_id || m.roId));
+    const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
+    if (isRoInactive) return false;
+    const s = String(m.status || '').trim().toUpperCase();
+    const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
+    if (!isActive) return false;
+    const cleanW = String(m.live_water || m.liveWater || '').replace('%', '').trim().toLowerCase();
+    const numW = parseInt(cleanW, 10);
+    return cleanW === 'low' || (!isNaN(numW) && numW <= 20);
+  }).length;
+
+  const normalActive = Math.max(0, activeMachinesCount - activeWithWaterAlert);
+  const inactiveWithWaterAlert = Math.max(0, waterLowCount - activeWithWaterAlert);
+  const normalInactive = Math.max(0, offlineCount - inactiveWithWaterAlert);
+
+  // Active machines shown in emerald green, Water Alert in sky blue, Inactive in red
   const machineStatusData = [
-    { name: 'Active', value: activeMachinesCount, color: '#10b981' },
-    { name: 'Inactive', value: offlineCount, color: '#ef4444' },
+    { name: 'Active', value: normalActive, color: '#10b981' },
+    { name: 'Water Alert', value: waterLowCount, color: '#0284c7' },
+    { name: 'Inactive', value: normalInactive, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
   const statusSummaryBoxes = [

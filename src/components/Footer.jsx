@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Activity, Zap, ShieldCheck, PhoneCall } from 'lucide-react';
-import logoImg from '../assets/e2t_logo.jpeg';
+import logoImg from '../assets/smartbuddy.png';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
