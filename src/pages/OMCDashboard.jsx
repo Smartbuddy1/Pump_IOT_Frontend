@@ -319,30 +319,11 @@ const OMCDashboard = () => {
     return isWLowOrEmpty || hasWaterAlert;
   }).length;
 
-  const activeWithWaterAlert = filteredMachines.filter(m => {
-    const parentRo = (allRos || []).find(r => String(r.id) === String(m.ro_id || m.roId));
-    const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
-    if (isRoInactive) return false;
-    const s = String(m.status || '').trim().toUpperCase();
-    const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
-    if (!isActive) return false;
-    const cleanW = String(m.live_water || m.liveWater || '').replace('%', '').trim().toLowerCase();
-    const isWLowOrEmpty = cleanW === 'low' || cleanW === '0' || (parseInt(cleanW, 10) <= 20 && !isNaN(parseInt(cleanW, 10)));
-    const hasWaterAlert = filteredAlerts.some(a => 
-      (String(a.machineId || a.machine_id).toLowerCase() === String(m.name || m.id).toLowerCase()) &&
-      a.type === 'Water' && a.status !== 'Resolved'
-    );
-    return isWLowOrEmpty || hasWaterAlert;
-  }).length;
-
-  const normalActive = Math.max(0, activeMachinesCount - activeWithWaterAlert);
-  const inactiveWithWaterAlert = Math.max(0, waterAlertCount - activeWithWaterAlert);
-  const normalInactive = Math.max(0, offlineCount - inactiveWithWaterAlert);
-
+  // Tri-color machine status: Active (Green), Water Alert (Blue), Inactive (Red)
   const machineStatusData = [
-    { name: 'Active', value: normalActive, color: '#10b981' },
+    { name: 'Active', value: activeMachinesCount, color: '#10b981' },
     { name: 'Water Alert', value: waterAlertCount, color: '#0284c7' },
-    { name: 'Inactive', value: normalInactive, color: '#ef4444' },
+    { name: 'Inactive', value: offlineCount, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
   const statusSummaryBoxes = [
