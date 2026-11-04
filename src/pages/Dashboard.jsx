@@ -286,24 +286,34 @@ const SuperAdminDashboard = () => {
   ];
 
   const offlineCount = inactiveMachinesCount;
-  // Calculate machines currently having low water level (<= 20% or 'low')
-  const waterLowCount = machinesList.filter(m => {
+  // Calculate machines currently having low water level (<= 20% or 'low') among active machines
+  const activeWaterAlertCount = machinesList.filter(m => {
+    const parentRo = (rosList || []).find(r => String(r.id) === String(m.ro_id || m.roId));
+    const isRoInactive = parentRo && String(parentRo.status || '').toLowerCase() === 'inactive';
+    if (isRoInactive) return false;
+    const s = String(m.status || '').trim().toUpperCase();
+    const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL';
+    if (!isActive) return false;
     const cleanW = String(m.live_water || m.liveWater || '').replace('%', '').trim().toLowerCase();
     const numW = parseInt(cleanW, 10);
     return cleanW === 'low' || (!isNaN(numW) && numW <= 20);
   }).length;
 
+  // Active machines operating normally with sufficient water
+  const activeNormalCount = Math.max(0, activeMachinesCount - activeWaterAlertCount);
+
   // Tri-color machine status: Active (Green), Water Alert (Blue), Inactive (Red)
+  // Mutually exclusive so sum ALWAYS equals Total Machines
   const machineStatusData = [
-    { name: 'Active', value: activeMachinesCount, color: '#10b981' },
-    { name: 'Water Alert', value: waterLowCount, color: '#0284c7' },
+    { name: 'Active', value: activeNormalCount, color: '#10b981' },
+    { name: 'Water Alert', value: activeWaterAlertCount, color: '#0284c7' },
     { name: 'Inactive', value: offlineCount, color: '#ef4444' },
   ].filter(item => item.value > 0);
 
   const statusSummaryBoxes = [
     {
       name: 'Active',
-      value: activeMachinesCount,
+      value: activeNormalCount,
       color: '#10b981',
       bg: 'rgba(16, 185, 129, 0.1)',
       border: 'rgba(16, 185, 129, 0.25)',
@@ -319,7 +329,7 @@ const SuperAdminDashboard = () => {
     },
     {
       name: 'Water Alert',
-      value: waterLowCount,
+      value: activeWaterAlertCount,
       color: '#0284c7',
       bg: 'rgba(2, 132, 199, 0.1)',
       border: 'rgba(2, 132, 199, 0.25)',
