@@ -114,7 +114,9 @@ export const getConsolidatedAlerts = ({
     if (msg.includes('water')) alertType = 'Water';
     else if (msg.includes('temp')) alertType = 'Temperature';
     else if (msg.includes('humid')) alertType = 'Humidity';
-    else if (msg.includes('odour')) alertType = 'Odour';
+    else if (msg.includes('nh3') || msg.includes('ammonia')) alertType = 'NH3';
+    else if (msg.includes('h2s') || msg.includes('hydrogen sulfide') || msg.includes('sulfide')) alertType = 'H2S';
+    else if (msg.includes('odour') || msg.includes('voc')) alertType = 'Odour';
     
     const timestamp = alert.timestamp || alert.created_at || new Date().toISOString();
     let displayMachineId = machine?.name || alert.machineName || alert.machine_name || (isNaN(Number(alertMacStr)) ? alertMacStr : '') || (machine ? machine.id : '') || alertMacStr || 'SBP2T1001';
@@ -370,7 +372,7 @@ export const getConsolidatedAlerts = ({
   liveAlerts.forEach(liveA => {
     const exists = mappedAlerts.some(a => 
       String(a.machineId || a.machineName).toLowerCase() === String(liveA.machineId).toLowerCase() &&
-      a.type === liveA.type &&
+      (a.type === liveA.type || (a.issue && a.issue.toLowerCase().includes(liveA.type.toLowerCase()))) &&
       a.status !== 'Resolved'
     );
     if (!exists) {
@@ -431,5 +433,9 @@ export const getConsolidatedAlerts = ({
     }
   }
 
-  return finalAlerts;
+  return finalAlerts.sort((a, b) => {
+    const tA = new Date(a.timestamp || 0).getTime();
+    const tB = new Date(b.timestamp || 0).getTime();
+    return tB - tA;
+  });
 };

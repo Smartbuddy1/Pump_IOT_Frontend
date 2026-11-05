@@ -635,7 +635,7 @@ const ReadingsContent = () => {
                 padding: '0.55rem 0.75rem 0.55rem 2.25rem',
                 borderRadius: '8px',
                 border: '1px solid var(--border-color)',
-                background: 'var(--hover-bg, #f8fafc)',
+                background: 'var(--input-bg)',
                 color: 'var(--text-primary)',
                 fontSize: '0.88rem'
               }}
@@ -652,16 +652,16 @@ const ReadingsContent = () => {
               padding: '0.55rem 1rem',
               borderRadius: '8px',
               border: '1px solid var(--border-color)',
-              background: 'var(--hover-bg, #f8fafc)',
+              background: 'var(--input-bg)',
               color: 'var(--text-primary)',
               fontSize: '0.88rem',
               fontWeight: '600',
               cursor: 'pointer'
             }}
           >
-            <option value="All">All Machines ({machineOptions.length})</option>
+            <option value="All" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>All Machines ({machineOptions.length})</option>
             {machineOptions.map(m => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m} value={m} style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>{m}</option>
             ))}
           </select>
 
@@ -676,16 +676,16 @@ const ReadingsContent = () => {
               padding: '0.55rem 0.85rem',
               borderRadius: '8px',
               border: '1px solid var(--border-color)',
-              background: 'var(--hover-bg, #f8fafc)',
+              background: 'var(--input-bg)',
               color: 'var(--text-primary)',
               fontSize: '0.88rem',
               fontWeight: '600',
               cursor: 'pointer'
             }}
           >
-            <option value="All">All Dates ({readings.length})</option>
-            <option value="Today">Today ({dateCounts.todayCount})</option>
-            <option value="Yesterday">Yesterday ({dateCounts.yesterdayCount})</option>
+            <option value="All" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>All Dates ({readings.length})</option>
+            <option value="Today" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>Today ({dateCounts.todayCount})</option>
+            <option value="Yesterday" style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>Yesterday ({dateCounts.yesterdayCount})</option>
           </select>
 
           {/* Rows per page selector */}
@@ -701,17 +701,17 @@ const ReadingsContent = () => {
                 padding: '0.45rem 0.65rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: 'var(--hover-bg, #f8fafc)',
+                background: 'var(--input-bg)',
                 color: 'var(--text-primary)',
                 fontSize: '0.82rem',
                 fontWeight: '700',
                 cursor: 'pointer'
               }}
             >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
+              <option value={10} style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>10</option>
+              <option value={25} style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>25</option>
+              <option value={50} style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>50</option>
+              <option value={100} style={{ background: 'var(--surface-bg)', color: 'var(--text-primary)' }}>100</option>
             </select>
           </div>
         </div>
@@ -1015,7 +1015,7 @@ const ReadingsContent = () => {
                 padding: '0.45rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: currentPage === 1 ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                background: currentPage === 1 ? 'var(--hover-bg)' : 'var(--surface-bg)',
                 color: currentPage === 1 ? 'var(--text-secondary)' : 'var(--text-primary)',
                 cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
               }}
@@ -1035,7 +1035,7 @@ const ReadingsContent = () => {
                 padding: '0.45rem 0.75rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: currentPage === 1 ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                background: currentPage === 1 ? 'var(--hover-bg)' : 'var(--surface-bg)',
                 color: currentPage === 1 ? 'var(--text-secondary)' : 'var(--text-primary)',
                 cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
@@ -1082,7 +1082,7 @@ const ReadingsContent = () => {
                 padding: '0.45rem 0.75rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: currentPage === totalPages ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                background: currentPage === totalPages ? 'var(--hover-bg)' : 'var(--surface-bg)',
                 color: currentPage === totalPages ? 'var(--text-secondary)' : 'var(--text-primary)',
                 cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
@@ -1104,7 +1104,7 @@ const ReadingsContent = () => {
                 padding: '0.45rem',
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)',
-                background: currentPage === totalPages ? 'var(--hover-bg, #f1f5f9)' : 'var(--surface-bg)',
+                background: currentPage === totalPages ? 'var(--hover-bg)' : 'var(--surface-bg)',
                 color: currentPage === totalPages ? 'var(--text-secondary)' : 'var(--text-primary)',
                 cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
               }}
@@ -1127,7 +1127,7 @@ const ReadingsContent = () => {
                   padding: '0.35rem 0.45rem',
                   borderRadius: '6px',
                   border: '1px solid var(--border-color)',
-                  background: 'var(--hover-bg, #f8fafc)',
+                  background: 'var(--input-bg)',
                   color: 'var(--text-primary)',
                   fontSize: '0.82rem',
                   fontWeight: '600',

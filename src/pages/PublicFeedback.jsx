@@ -71,6 +71,7 @@ const translations = {
     submitBtn: 'फीडबॅक सबमिट करा (Submit Feedback)',
     submitting: 'सबमिट होत आहे...',
     errorRating: 'कृपया १ ते ५ स्टार्स किंवा वरील पर्यायांपैकी एक निवडा.',
+    errorPhone: 'कृपया वैध १० अंकी मोबाईल नंबर टाका (उदा. 9876543210)',
     errorSubmit: 'फीडबॅक सबमिट करताना एरर आली. कृपया पुन्हा प्रयत्न करा.',
     thankYouTitle: 'धन्यवाद! Thank You!',
     thankYouMsg: 'आपला मौल्यवान अभिप्राय यशस्वीरित्या नोंदवला गेला आहे. स्वच्छता व आरोग्य राखण्यासाठी आपल्या अभिप्रायाची त्वरित दखल घेतली जाईल.',
@@ -123,6 +124,7 @@ const translations = {
     submitBtn: 'प्रतिक्रिया सबमिट करें (Submit Feedback)',
     submitting: 'सबमिट हो रहा है...',
     errorRating: 'कृपया १ से ५ स्टार्स या ऊपर दिए विकल्पों में से चुनें।',
+    errorPhone: 'कृपया मान्य १० अंकों का मोबाइल नंबर दर्ज करें (उदा. 9876543210)',
     errorSubmit: 'फीडबैक सबमिट करने में समस्या आई। कृपया पुनः प्रयास करें।',
     thankYouTitle: 'धन्यवाद! Thank You!',
     thankYouMsg: 'आपकी बहुमूल्य प्रतिक्रिया सफलतापूर्वक दर्ज कर ली गई है। स्वच्छता और स्वास्थ्य बनाए रखने के लिए इस पर तुरंत कार्रवाई की जाएगी।',
@@ -175,6 +177,7 @@ const translations = {
     submitBtn: 'Submit Feedback',
     submitting: 'Submitting...',
     errorRating: 'Please select a rating or one of the options above.',
+    errorPhone: 'Please enter a valid 10-digit mobile number (e.g. 9876543210)',
     errorSubmit: 'Error submitting feedback. Please try again.',
     thankYouTitle: 'Thank You!',
     thankYouMsg: 'Your valuable feedback has been recorded successfully. Our team will review this to maintain high hygiene standards.',
@@ -294,6 +297,16 @@ const PublicFeedback = () => {
       return;
     }
 
+    // Mobile Number Validation: If provided, must be a valid 10-digit number starting with 6, 7, 8, or 9
+    const cleanPhone = userPhone.trim().replace(/\D/g, '');
+    if (cleanPhone) {
+      const phoneRegex = /^[6-9]\d{9}$/;
+      if (!phoneRegex.test(cleanPhone)) {
+        setErrorMsg(t.errorPhone);
+        return;
+      }
+    }
+
     try {
       setSubmitting(true);
       setErrorMsg('');
@@ -306,7 +319,7 @@ const PublicFeedback = () => {
         rating: rating || 5,
         reasons: selectedReasons,
         comment: finalComment,
-        userPhone: userPhone.trim() || null,
+        userPhone: cleanPhone || null,
         language
       };
 
@@ -731,36 +744,70 @@ const PublicFeedback = () => {
                 </div>
               )}
 
-              {/* Optional Phone Number */}
+              {/* Optional Phone Number with Indian 10-digit validation */}
               <div>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '0.82rem',
-                  color: 'rgba(255, 255, 255, 0.75)',
-                  marginBottom: '0.4rem'
-                }}>
-                  <Phone size={14} color="#3b82f6" />
-                  {t.phoneLabel}
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.82rem',
+                    color: 'rgba(255, 255, 255, 0.75)'
+                  }}>
+                    <Phone size={14} color="#3b82f6" />
+                    {t.phoneLabel}
+                  </label>
+                  {userPhone.length > 0 && (
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: '700',
+                      color: userPhone.length === 10 && /^[6-9]\d{9}$/.test(userPhone) ? '#10b981' : '#f59e0b'
+                    }}>
+                      {userPhone.length === 10 && /^[6-9]\d{9}$/.test(userPhone)
+                        ? '✓ 10-Digit Valid'
+                        : `${userPhone.length}/10 digits`}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  pattern="[6-9][0-9]{9}"
+                  maxLength={10}
                   value={userPhone}
-                  onChange={(e) => setUserPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setUserPhone(clean);
+                    if (errorMsg) setErrorMsg('');
+                  }}
                   placeholder={t.phonePlaceholder}
                   style={{
                     width: '100%',
                     boxSizing: 'border-box',
                     padding: '0.65rem 1rem',
                     borderRadius: '10px',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    border: userPhone && (userPhone.length < 10 || !/^[6-9]/.test(userPhone))
+                      ? '1px solid #ef4444'
+                      : userPhone.length === 10 && /^[6-9]\d{9}$/.test(userPhone)
+                        ? '1px solid #10b981'
+                        : '1px solid rgba(255, 255, 255, 0.15)',
                     background: 'rgba(15, 23, 42, 0.6)',
                     color: '#ffffff',
                     fontSize: '0.85rem',
-                    outline: 'none'
+                    outline: 'none',
+                    transition: 'border-color 0.2s'
                   }}
                 />
+                {userPhone.length > 0 && !/^[6-9]/.test(userPhone) && (
+                  <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.72rem', color: '#fca5a5' }}>
+                    {language === 'mr' ? 'मोबाईल नंबर ६, ७, ८ किंवा ९ ने सुरू झाला पाहिजे' : language === 'hi' ? 'मोबाइल नंबर ६, ७, ८ या ९ से शुरू होना चाहिए' : 'Mobile number must start with 6, 7, 8, or 9'}
+                  </p>
+                )}
+                {userPhone.length > 0 && /^[6-9]/.test(userPhone) && userPhone.length < 10 && (
+                  <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.72rem', color: '#fde68a' }}>
+                    {language === 'mr' ? '१० अंकी मोबाईल नंबर पूर्ण करा' : language === 'hi' ? '१० अंकों का मोबाइल नंबर पूरा करें' : 'Complete 10-digit mobile number'}
+                  </p>
+                )}
               </div>
 
               {/* Error Message */}

@@ -35,6 +35,16 @@ const FeedbackLogs = () => {
   const { socket } = useSocket();
   const pdfTemplateRef = useRef(null);
 
+  const isSuperAdmin = user?.role === 'Super Admin';
+  const isOmcAdmin = user?.role === 'OMC Admin' || String(user?.role || '').toLowerCase().includes('omc');
+  const isRoUser = !isOmcAdmin && !isSuperAdmin && (
+    user?.role === 'RO Manager' || 
+    user?.role === 'RO User' ||
+    String(user?.role || '').toLowerCase().includes('ro') || 
+    String(user?.role || '').toLowerCase().includes('iocl') || 
+    String(user?.name || '').toLowerCase().includes('iocl')
+  );
+
   const [feedbacks, setFeedbacks] = useState([]);
   const [allRos, setAllRos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +95,16 @@ const FeedbackLogs = () => {
     };
   }, [socket]);
 
+  // Derive specific RO and OMC for role isolation (RO Manager & OMC Admin)
+  const matchedUserRo = allRos.find(r => String(r.id) === String(user?.roId || user?.ro_id));
+  const currentRoName = isRoUser 
+    ? (feedbacks[0]?.ro_name || matchedUserRo?.name || user?.roName || 'Sanjivani petroleum')
+    : null;
+
+  const currentOmcName = (isRoUser || isOmcAdmin)
+    ? (feedbacks[0]?.omc_name || matchedUserRo?.omc_name || user?.omcName || (isRoUser ? 'HPCL' : 'IOCL'))
+    : null;
+
   // Unique OMCs for filter dropdown
   const uniqueOmcs = Array.from(new Set(feedbacks.map(f => f.omc_name).filter(Boolean)));
 
@@ -111,10 +131,10 @@ const FeedbackLogs = () => {
     if (ratingFilter === 'LOW' && r > 2) return false;
 
     // OMC filter
-    if (omcFilter !== 'ALL' && fb.omc_name !== omcFilter) return false;
+    if (!isRoUser && !isOmcAdmin && omcFilter !== 'ALL' && fb.omc_name !== omcFilter) return false;
 
     // RO filter
-    if (roFilter !== 'ALL') {
+    if (!isRoUser && roFilter !== 'ALL') {
       const targetRo = String(roFilter).toLowerCase().trim();
       const fbRo = String(fb.ro_name || '').toLowerCase().trim();
       if (fbRo !== targetRo) return false;
@@ -363,7 +383,11 @@ const FeedbackLogs = () => {
       `}</style>
 
       {/* Corporate Print Header */}
-      <PrintHeader title="CUSTOMER HYGIENE RATINGS & FEEDBACK LOGS REPORT" />
+      <PrintHeader 
+        title="CUSTOMER HYGIENE RATINGS & FEEDBACK LOGS REPORT" 
+        clientName={isRoUser || isOmcAdmin ? currentOmcName : (omcFilter !== 'ALL' ? omcFilter : 'All OMCs')}
+        roName={isRoUser ? currentRoName : (roFilter !== 'ALL' ? roFilter : 'All ROs')}
+      />
 
       {/* Page Header */}
       <div className="no-print" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
@@ -618,13 +642,104 @@ const FeedbackLogs = () => {
             <option value="LOW">1-2 Stars (Complaints)</option>
           </select>
 
-          {/* OMC filter */}
-          {uniqueOmcs.length > 0 && (
+          {/* OMC filter / specific display */}
+          {isRoUser ? (
+            <div
+              title={`Assigned OMC: ${currentOmcName}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.6rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-bg)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: 'default',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}
+            >
+              <Fuel size={14} color="#3b82f6" />
+              <span>{currentOmcName}</span>
+            </div>
+          ) : isOmcAdmin ? (
+            <div
+              title={`Assigned OMC: ${currentOmcName}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.6rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-bg)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: 'default',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}
+            >
+              <Fuel size={14} color="#3b82f6" />
+              <span>{currentOmcName}</span>
+            </div>
+          ) : (
+            uniqueOmcs.length > 0 && (
+              <select
+                value={omcFilter}
+                onChange={(e) => {
+                  setOmcFilter(e.target.value);
+                  setRoFilter('ALL');
+                  setCurrentPage(1);
+                }}
+                style={{
+                  padding: '0.6rem 0.85rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-bg)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.82rem',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="ALL">All OMCs</option>
+                {uniqueOmcs.map((o, idx) => (
+                  <option key={idx} value={o}>{o}</option>
+                ))}
+              </select>
+            )
+          )}
+
+          {/* RO filter / specific display */}
+          {isRoUser ? (
+            <div
+              title={`Assigned Petrol Pump: ${currentRoName}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.6rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-bg)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: '700',
+                cursor: 'default',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}
+            >
+              <MapPin size={14} color="#10b981" />
+              <span>{currentRoName}</span>
+            </div>
+          ) : (
             <select
-              value={omcFilter}
+              value={roFilter}
               onChange={(e) => {
-                setOmcFilter(e.target.value);
-                setRoFilter('ALL');
+                setRoFilter(e.target.value);
                 setCurrentPage(1);
               }}
               style={{
@@ -638,36 +753,12 @@ const FeedbackLogs = () => {
                 cursor: 'pointer'
               }}
             >
-              <option value="ALL">All OMCs</option>
-              {uniqueOmcs.map((o, idx) => (
-                <option key={idx} value={o}>{o}</option>
+              <option value="ALL">All ROs</option>
+              {uniqueRos.map((roName, idx) => (
+                <option key={idx} value={roName}>{roName}</option>
               ))}
             </select>
           )}
-
-          {/* RO filter */}
-          <select
-            value={roFilter}
-            onChange={(e) => {
-              setRoFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            style={{
-              padding: '0.6rem 0.85rem',
-              borderRadius: '8px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--surface-bg)',
-              color: 'var(--text-primary)',
-              fontSize: '0.82rem',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="ALL">All ROs</option>
-            {uniqueRos.map((roName, idx) => (
-              <option key={idx} value={roName}>{roName}</option>
-            ))}
-          </select>
 
           {/* Date filter */}
           <select
@@ -972,8 +1063,8 @@ const FeedbackLogs = () => {
               CUSTOMER HYGIENE RATINGS & FEEDBACK LOGS REPORT
             </h2>
             <div style={{ color: '#475569', fontSize: '9.5px', fontWeight: '600', display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <span>OMC: <strong style={{ color: '#0f172a' }}>{omcFilter !== 'ALL' ? omcFilter : (user?.role === 'OMC Admin' ? 'OMC Admin' : (user?.role === 'User' || user?.role === 'RO Manager' ? 'RO Manager' : 'SuperAdmin'))}</strong></span>
-              {roFilter !== 'ALL' && <span>RO: <strong style={{ color: '#0f172a' }}>{roFilter}</strong></span>}
+              <span>OMC: <strong style={{ color: '#0f172a' }}>{isRoUser || isOmcAdmin ? currentOmcName : (omcFilter !== 'ALL' ? omcFilter : 'All OMCs')}</strong></span>
+              <span>RO: <strong style={{ color: '#0f172a' }}>{isRoUser ? currentRoName : (roFilter !== 'ALL' ? roFilter : 'All ROs')}</strong></span>
               <span>Total: <strong style={{ color: '#0f172a' }}>{filteredFeedbacks.length}</strong></span>
               <span>Date: <strong style={{ color: '#0f172a' }}>{new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</strong></span>
             </div>

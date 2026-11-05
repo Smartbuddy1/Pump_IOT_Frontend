@@ -38,6 +38,7 @@ import { exportToPDF, exportToExcel } from '../utils/exportUtils';
 import PrintHeader from '../components/PrintHeader';
 import PrintFooter from '../components/PrintFooter';
 import { matchesMachineQuery } from '../utils/machineSearchUtils';
+import { getConsolidatedAlerts } from '../utils/alertUtils';
 
 const Reports = () => {
   const { user } = useAuth();
@@ -868,10 +869,28 @@ const Reports = () => {
       return;
     } else {
       // Hygiene & Alerts Report
+      let currentAlerts = alertList;
+      try {
+        const freshAlertsRes = await api.get('/alerts').catch(() => null);
+        if (freshAlertsRes?.data) {
+          const raw = freshAlertsRes.data?.data || (Array.isArray(freshAlertsRes.data) ? freshAlertsRes.data : []);
+          currentAlerts = getConsolidatedAlerts({
+            rawAlerts: raw,
+            machines: macList,
+            ros: roList,
+            omcs: omcs,
+            user
+          });
+          setAlerts(currentAlerts);
+        }
+      } catch (e) {
+        console.error("Could not refresh alerts:", e);
+      }
+
       const historyRows = [];
       const seenKey = new Set();
 
-      (alertList || []).forEach(a => {
+      (currentAlerts || []).forEach(a => {
         const aMachId = String(a.machineId || a.machineName || a.machine_id || '').toLowerCase();
         const matchingMachine = targetMachines.find(m => 
           String(m.name || '').toLowerCase() === aMachId ||
@@ -880,27 +899,32 @@ const Reports = () => {
         );
         if (matchingMachine) {
           const mInstallDate = getMachineInstallDate(matchingMachine);
-          const aDate = a.rawDate || a.date;
+          const ymdDate = a.rawDate || (a.date && a.date.includes('-') ? a.date : null) || (a.timestamp ? new Date(a.timestamp).toISOString().split('T')[0] : getTodayFormatted());
 
           // Never show alerts that occurred before the machine was created/installed
-          if (mInstallDate && aDate && aDate < mInstallDate) {
+          if (mInstallDate && ymdDate && ymdDate < mInstallDate) {
             return;
           }
 
-          if (!targetDates.length || (aDate && targetDates.includes(aDate))) {
+          if (!targetDates.length || (ymdDate && targetDates.includes(ymdDate))) {
             const ro = roList.find(r => String(r.id) === String(matchingMachine.ro_id || matchingMachine.roId) || String(r.db_id) === String(matchingMachine.ro_id || matchingMachine.roId));
-            const key = `${matchingMachine.name || matchingMachine.id}_${aDate}_${a.issue || a.message}`;
-            if (!seenKey.has(key)) {
-              seenKey.add(key);
+            const uniqueKey = a.id ? String(a.id) : `${matchingMachine.name || matchingMachine.id}_${ymdDate}_${a.rawTime || a.time}_${a.issue || a.message}`;
+            if (!seenKey.has(uniqueKey)) {
+              seenKey.add(uniqueKey);
 
               historyRows.push({
+                id: a.id,
                 machineId: matchingMachine.name || matchingMachine.id,
-                date: aDate || getTodayFormatted(),
-                roName: ro?.name || matchingMachine.roName || a.roName || 'RO Location',
-                ro_id: matchingMachine.ro_id || matchingMachine.roId,
+                date: ymdDate || getTodayFormatted(),
+                time: a.rawTime || a.time || '',
+                timestamp: a.timestamp || '',
+                roName: ro?.name || matchingMachine.roName || a.roName || a.ro || 'RO Location',
+                ro_id: matchingMachine.ro_id || matchingMachine.roId || a.ro_id || a.roId,
                 omcName: getOmcName(matchingMachine.ro_id || matchingMachine.roId, matchingMachine),
+                status: a.status || 'Open',
                 val1: a.issue || a.message || 'Sensor Alert',
                 val2: a.severity || 'Low',
+                severity: a.severity || 'Low',
                 type: a.type || 'General'
               });
             }
@@ -908,7 +932,16 @@ const Reports = () => {
         }
       });
 
-      historyRows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      // Sort newest alerts first (descending by timestamp / date & time)
+      historyRows.sort((a, b) => {
+        if (a.timestamp && b.timestamp) {
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        }
+        const dDiff = String(b.date).localeCompare(String(a.date));
+        if (dDiff !== 0) return dDiff;
+        return String(b.time || '').localeCompare(String(a.time || ''));
+      });
+
       setReportData(historyRows);
     }
   };
@@ -1035,31 +1068,15 @@ const Reports = () => {
         setRos(loadedROs);
         setMachines(loadedMachines);
 
-        const mappedAlerts = loadedAlerts.map(alert => {
-          const machine = loadedMachines.find(m => String(m.id) === String(alert.machine_id) || m.name === alert.machineName);
-          let alertType = alert.type || 'General';
-          if (!alert.type) {
-            if (alert.message?.toLowerCase().includes('water')) alertType = 'Water';
-            else if (alert.message?.toLowerCase().includes('temp')) alertType = 'Temperature';
-            else if (alert.message?.toLowerCase().includes('humid')) alertType = 'Humidity';
-            else if (alert.message?.toLowerCase().includes('odour')) alertType = 'Odour';
-          }
-
-          return {
-            id: alert.id,
-            rawMachineId: alert.machine_id,
-            machineName: machine ? machine.name : (alert.machineName || `Machine ${alert.machine_id}`),
-            machineId: machine ? machine.name : (alert.machineName || `Machine ${alert.machine_id}`),
-            type: alertType,
-            issue: alert.message,
-            severity: alert.severity,
-            ro_id: alert.ro_id || (machine ? machine.ro_id : null),
-            rawDate: alert.timestamp ? new Date(alert.timestamp).toISOString().split('T')[0] : getTodayFormatted(),
-            rawTime: alert.timestamp ? new Date(alert.timestamp).toTimeString().split(' ')[0] : '--'
-          };
+        const consolidated = getConsolidatedAlerts({
+          rawAlerts: loadedAlerts,
+          machines: loadedMachines,
+          ros: loadedROs,
+          omcs: rawOmcs,
+          user
         });
 
-        setAlerts(mappedAlerts);
+        setAlerts(consolidated);
         // Do not auto-generate report; wait until user explicitly clicks "Apply Filter"
       } catch (err) {
         console.error("Error fetching report data:", err);
@@ -1087,8 +1104,8 @@ const Reports = () => {
         : ['Machine ID', 'Date', 'RO', 'Machine Usage (Visits)'];
     } else {
       headers = isSuperAdmin 
-        ? ['Machine ID', 'Date', 'OMC', 'RO', 'Severity', 'Sensor Alert'] 
-        : ['Machine ID', 'Date', 'RO', 'Severity', 'Sensor Alert'];
+        ? ['Machine ID', 'Date & Time', 'OMC', 'RO', 'Status', 'Severity', 'Sensor Alert'] 
+        : ['Machine ID', 'Date & Time', 'RO', 'Status', 'Severity', 'Sensor Alert'];
     }
 
     const rows = displayedData.map(r => {
@@ -1118,9 +1135,11 @@ const Reports = () => {
           ? [r.machineId, dateInfo.formatted, omcName, r.roName, r.val1]
           : [r.machineId, dateInfo.formatted, r.roName, r.val1];
       } else {
+        const dateTimeStr = dateInfo.sub ? `${dateInfo.formatted} ${dateInfo.sub}` : dateInfo.formatted;
+        const statusStr = r.status === 'Resolved' ? 'Resolved' : 'Active';
         return isSuperAdmin
-          ? [r.machineId, dateInfo.formatted, omcName, r.roName, r.val2 || r.severity || 'Low', r.val1]
-          : [r.machineId, dateInfo.formatted, r.roName, r.val2 || r.severity || 'Low', r.val1];
+          ? [r.machineId, dateTimeStr, omcName, r.roName, statusStr, r.val2 || r.severity || 'Low', r.val1]
+          : [r.machineId, dateTimeStr, r.roName, statusStr, r.val2 || r.severity || 'Low', r.val1];
       }
     });
 
@@ -1156,11 +1175,11 @@ const Reports = () => {
     } else {
       columns = isSingleMachine
         ? (isSuperAdmin
-            ? ['DATE', 'OMC', 'RO', 'SEVERITY', 'SENSOR ALERT']
-            : ['DATE', 'RO', 'SEVERITY', 'SENSOR ALERT'])
+            ? ['DATE & TIME', 'OMC', 'RO', 'STATUS', 'SEVERITY', 'SENSOR ALERT']
+            : ['DATE & TIME', 'RO', 'STATUS', 'SEVERITY', 'SENSOR ALERT'])
         : (isSuperAdmin
-            ? ['MACHINE ID', 'DATE', 'OMC', 'RO', 'SEVERITY', 'SENSOR ALERT']
-            : ['MACHINE ID', 'DATE', 'RO', 'SEVERITY', 'SENSOR ALERT']);
+            ? ['MACHINE ID', 'DATE & TIME', 'OMC', 'RO', 'STATUS', 'SEVERITY', 'SENSOR ALERT']
+            : ['MACHINE ID', 'DATE & TIME', 'RO', 'STATUS', 'SEVERITY', 'SENSOR ALERT']);
     }
 
     const rows = displayedData.map(r => {
@@ -1178,9 +1197,11 @@ const Reports = () => {
           : [dateInfo.formatted, r.roName, `${r.val1} visits`];
         return isSingleMachine ? baseRow : [r.machineId, ...baseRow];
       } else {
+        const dateTimeStr = dateInfo.sub ? `${dateInfo.formatted} (${dateInfo.sub})` : dateInfo.formatted;
+        const statusStr = r.status === 'Resolved' ? 'Resolved' : 'Active';
         const baseRow = isSuperAdmin
-          ? [dateInfo.formatted, omcName, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-']
-          : [dateInfo.formatted, r.roName, r.val2 || r.severity || 'Low', r.val1 || '-'];
+          ? [dateTimeStr, omcName, r.roName, statusStr, r.val2 || r.severity || 'Low', r.val1 || '-']
+          : [dateTimeStr, r.roName, statusStr, r.val2 || r.severity || 'Low', r.val1 || '-'];
         return isSingleMachine ? baseRow : [r.machineId, ...baseRow];
       }
     });
@@ -1228,14 +1249,18 @@ const Reports = () => {
     window.print();
   };
 
-  // Helper to format date cleanly
-  const formatDateDisplay = (dateVal) => {
+  // Helper to format Date & Time consistently
+  const formatDateDisplay = (dateVal, timeVal) => {
     try {
-      let y, m, d;
+      let y, m, d, time = timeVal;
       let dateStr = dateVal;
 
       if (dateStr && dateStr.includes(',')) {
-        dateStr = dateStr.split(',')[0].trim();
+        const parts = dateStr.split(',');
+        dateStr = parts[0].trim();
+        if (!time || time === '--' || time === dateVal) {
+          time = parts[1].trim();
+        }
       }
 
       if (dateStr && dateStr.includes('/')) {
@@ -1254,15 +1279,18 @@ const Reports = () => {
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const dayFormatted = String(d).padStart(2, '0');
         const formattedDate = `${dayFormatted} ${monthNames[m]} ${y}`;
+        const cleanTime = (time && time !== '--' && !time.includes('/')) ? time : '';
 
         return {
-          formatted: formattedDate
+          formatted: formattedDate,
+          sub: cleanTime
         };
       }
     } catch (e) {}
 
     return { 
-      formatted: dateVal || 'N/A'
+      formatted: dateVal || 'N/A',
+      sub: timeVal || ''
     };
   };
 
@@ -1309,8 +1337,9 @@ const Reports = () => {
     if (mId === term || (!isBoilerplate && mId.includes(term)) || matchesMachineQuery(mId, term)) return true;
 
     // 4. Other fields & multi-word
+    const statusStr = row.status || '';
     const sensorInfo = `${row.tempAvg || ''} ${row.humidityAvg || ''} ${row.vocAvg || ''} ${row.nh3Avg || ''} ${row.h2sAvg || ''} ${row.transactions || ''}`;
-    const searchable = `${rowId} ${omc} ${ro} ${row.date || ''} ${dateInfo.formatted || ''} ${row.val1 ?? ''} ${row.val2 ?? ''} ${sensorInfo}`.toLowerCase();
+    const searchable = `${rowId} ${omc} ${ro} ${row.date || ''} ${dateInfo.formatted || ''} ${dateInfo.sub || ''} ${statusStr} ${row.val1 ?? ''} ${row.val2 ?? ''} ${sensorInfo}`.toLowerCase();
     if (searchable.includes(term)) return true;
 
     const searchWords = term.split(/\s+/).filter(Boolean);
@@ -1350,6 +1379,17 @@ const Reports = () => {
       avgVoc: Math.round(sumVoc / count),
       totalTxns
     };
+  }, [activeTab, displayedData]);
+
+  // Quick Summary Stats for Hygiene & Alerts Report Tab
+  const hygieneAlertStats = React.useMemo(() => {
+    if (activeTab !== 'Hygiene & Alerts Report' || displayedData.length === 0) return null;
+    const total = displayedData.length;
+    const active = displayedData.filter(r => r.status !== 'Resolved').length;
+    const resolved = displayedData.filter(r => r.status === 'Resolved').length;
+    const danger = displayedData.filter(r => r.val2 === 'Danger' || r.val2 === 'Critical' || r.val2 === 'High' || r.severity === 'Danger').length;
+    const low = displayedData.filter(r => r.val2 === 'Low' || r.val2 === 'Info' || r.severity === 'Low').length;
+    return { total, active, resolved, danger, low };
   }, [activeTab, displayedData]);
 
   // Pagination State (25 records per page for clean visibility)
@@ -1767,6 +1807,62 @@ const Reports = () => {
         </div>
       )}
 
+      {/* 4-Card Pro KPI Summary for Hygiene & Alerts Report */}
+      {activeTab === 'Hygiene & Alerts Report' && isFilterApplied && hygieneAlertStats && (
+        <div className="no-print stat-cards-grid" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', 
+          gap: '1rem', 
+          marginBottom: '1.5rem' 
+        }}>
+          <div style={{ background: 'var(--surface-bg)', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '1rem 1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.12)', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Activity size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Total Alerts</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--text-primary)' }}>{hygieneAlertStats.total}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: '600' }}>In Filtered Period</div>
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--surface-bg)', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '1rem 1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Active Alerts</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#ef4444' }}>{hygieneAlertStats.active}</div>
+              <div style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} /> Live Attention
+              </div>
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--surface-bg)', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '1rem 1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShieldCheck size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Danger / Critical</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#dc2626' }}>{hygieneAlertStats.danger}</div>
+              <div style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: '600' }}>Immediate Action</div>
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--surface-bg)', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '1rem 1.25rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Resolved Logs</div>
+              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#059669' }}>{hygieneAlertStats.resolved}</div>
+              <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '600' }}>● Normalized & Cleared</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Table Toolbar (Search Bar Aligned Left, Today's Users Badge on Right) */}
       <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', padding: '0 0.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         {/* Live Search Bar */}
@@ -1843,6 +1939,33 @@ const Reports = () => {
             </div>
           </div>
         )}
+
+        {activeTab === 'Hygiene & Alerts Report' && isFilterApplied && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '0.4rem 0.85rem',
+              borderRadius: '20px',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              color: '#dc2626',
+              fontSize: '0.78rem',
+              fontWeight: '700'
+            }}>
+              <span style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: '#ef4444',
+                display: 'inline-block',
+                boxShadow: '0 0 6px #ef4444'
+              }} />
+              <span>System Alerts & History Logs</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Data Table */}
@@ -1851,11 +1974,15 @@ const Reports = () => {
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', backgroundColor: 'rgba(0,0,0,0.02)' }}>
               <th style={{ padding: '0.8rem 0.85rem', fontWeight: '700' }}>MACHINE ID</th>
-              <th style={{ padding: '0.8rem 0.85rem', fontWeight: '700', minWidth: '120px', whiteSpace: 'nowrap' }}>DATE</th>
+              <th style={{ padding: '0.8rem 0.85rem', fontWeight: '700', minWidth: '120px', whiteSpace: 'nowrap' }}>
+                {activeTab === 'Hygiene & Alerts Report' ? 'DATE & TIME' : 'DATE'}
+              </th>
               {isSuperAdmin && (
                 <th style={{ padding: '0.8rem 0.65rem', fontWeight: '700' }}>OMC</th>
               )}
-              <th style={{ padding: '0.8rem 0.85rem', fontWeight: '700' }}>RO</th>
+              <th style={{ padding: '0.8rem 0.85rem', fontWeight: '700' }}>
+                {activeTab === 'Hygiene & Alerts Report' ? 'RO NAME' : 'RO'}
+              </th>
               {activeTab === 'Sensor Telemetry Logs' ? (
                 <>
                   <th style={{ padding: '0.8rem 0.45rem', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>
@@ -1898,7 +2025,10 @@ const Reports = () => {
               ) : (
                 <>
                   {activeTab === 'Hygiene & Alerts Report' && (
-                    <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', textAlign: 'center' }}>SEVERITY</th>
+                    <>
+                      <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', textAlign: 'center' }}>STATUS</th>
+                      <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700', textAlign: 'center' }}>SEVERITY</th>
+                    </>
                   )}
                   <th style={{ padding: '0.85rem 1.25rem', fontWeight: '700' }}>
                     {activeTab === 'Usage Analytics' ? 'MACHINE USAGE (VISITS)' : 'SENSOR ALERT'}
@@ -1910,7 +2040,7 @@ const Reports = () => {
           <tbody className="screen-table-body">
             {!isFilterApplied ? (
               <tr>
-                <td colSpan={activeTab === 'Sensor Telemetry Logs' ? (isSuperAdmin ? 10 : 9) : (isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 6 : 5) : (activeTab === "Hygiene & Alerts Report" ? 5 : 4))} style={{ padding: '5rem 2rem', textAlign: 'center' }}>
+                <td colSpan={activeTab === 'Sensor Telemetry Logs' ? (isSuperAdmin ? 10 : 9) : (isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 7 : 5) : (activeTab === "Hygiene & Alerts Report" ? 6 : 4))} style={{ padding: '5rem 2rem', textAlign: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.85rem' }}>
                     <div style={{ 
                       width: '64px', 
@@ -1946,16 +2076,32 @@ const Reports = () => {
                       className="report-row" 
                       style={{ 
                         borderBottom: '1px solid var(--border-color)', 
-                        transition: 'background 0.15s ease'
+                        transition: 'background 0.15s ease',
+                        backgroundColor: (activeTab === 'Hygiene & Alerts Report' && row.status !== 'Resolved') 
+                          ? ((row.val2 === 'Danger' || row.val2 === 'Critical' || row.val2 === 'High' || row.severity === 'Danger') 
+                              ? 'rgba(239, 68, 68, 0.04)' 
+                              : 'rgba(59, 130, 246, 0.04)') 
+                          : 'transparent'
                       }}
                     >
                       <td style={{ padding: '0.75rem 0.85rem', color: '#8b5cf6', fontWeight: '700', fontSize: '0.9rem' }}>
                         {row.machineId}
                       </td>
                       <td style={{ padding: '0.75rem 0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                          {dateInfo.formatted}
-                        </span>
+                        {activeTab === 'Hygiene & Alerts Report' && dateInfo.sub ? (
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                              {dateInfo.formatted}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                              {dateInfo.sub}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                            {dateInfo.formatted}
+                          </span>
+                        )}
                       </td>
                       {isSuperAdmin && (
                         <td style={{ padding: '0.75rem 0.65rem' }}>
@@ -2022,27 +2168,64 @@ const Reports = () => {
                       ) : (
                         <>
                           {activeTab === 'Hygiene & Alerts Report' && (
-                            <td style={{ padding: '0.75rem 1.25rem', textAlign: 'center' }}>
-                              {(() => {
-                                const sev = row.val2 || row.severity || 'Low';
-                                const sevColor = (sev === 'Danger' || sev === 'Critical' || sev === 'High') ? '#ef4444' :
-                                                 (sev === 'Medium' || sev === 'Warning') ? '#f59e0b' : '#3b82f6';
-                                return (
-                                  <span style={{ 
-                                    padding: '0.25rem 0.65rem', 
-                                    borderRadius: '999px', 
-                                    background: `${sevColor}18`, 
-                                    color: sevColor,
-                                    border: `1px solid ${sevColor}33`,
-                                    fontWeight: '700', 
+                            <>
+                              <td style={{ padding: '0.75rem 1.25rem', textAlign: 'center' }}>
+                                {row.status === 'Resolved' ? (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '0.25rem 0.65rem',
+                                    borderRadius: '999px',
                                     fontSize: '0.75rem',
-                                    display: 'inline-block'
+                                    fontWeight: '700',
+                                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                                    color: '#10b981',
+                                    border: '1px solid rgba(16, 185, 129, 0.3)'
                                   }}>
-                                    {sev}
+                                    <CheckCircle2 size={12} />
+                                    Resolved
                                   </span>
-                                );
-                              })()}
-                            </td>
+                                ) : (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '0.25rem 0.65rem',
+                                    borderRadius: '999px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '700',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)'
+                                  }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block', boxShadow: '0 0 6px #ef4444' }}></span>
+                                    Active
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: '0.75rem 1.25rem', textAlign: 'center' }}>
+                                {(() => {
+                                  const sev = row.val2 || row.severity || 'Low';
+                                  const sevColor = (sev === 'Danger' || sev === 'Critical' || sev === 'High') ? '#ef4444' :
+                                                   (sev === 'Medium' || sev === 'Warning') ? '#f59e0b' : '#3b82f6';
+                                  return (
+                                    <span style={{ 
+                                      padding: '0.25rem 0.65rem', 
+                                      borderRadius: '999px', 
+                                      background: `${sevColor}18`, 
+                                      color: sevColor,
+                                      border: `1px solid ${sevColor}33`,
+                                      fontWeight: '700', 
+                                      fontSize: '0.75rem',
+                                      display: 'inline-block'
+                                    }}>
+                                      {sev}
+                                    </span>
+                                  );
+                                })()}
+                              </td>
+                            </>
                           )}
                           <td style={{ padding: '0.75rem 1.25rem', color: 'var(--text-primary)', fontWeight: '600' }}>
                             {activeTab === 'Usage Analytics' ? (
@@ -2072,7 +2255,7 @@ const Reports = () => {
               })
             ) : (
               <tr>
-                <td colSpan={activeTab === 'Sensor Telemetry Logs' ? (isSuperAdmin ? 9 : 8) : (isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 6 : 5) : (activeTab === "Hygiene & Alerts Report" ? 5 : 4))} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <td colSpan={activeTab === 'Sensor Telemetry Logs' ? (isSuperAdmin ? 9 : 8) : (isSuperAdmin ? (activeTab === "Hygiene & Alerts Report" ? 7 : 5) : (activeTab === "Hygiene & Alerts Report" ? 6 : 4))} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   {searchTerm.trim() ? `No matching records found for "${searchTerm}".` : 'No records found for the selected filters.'}
                 </td>
               </tr>
@@ -2090,7 +2273,14 @@ const Reports = () => {
                       {row.machineId}
                     </td>
                     <td style={{ padding: '8px 12px', color: '#334155', fontSize: '9pt' }}>
-                      {dateInfo.formatted}
+                      {activeTab === 'Hygiene & Alerts Report' && dateInfo.sub ? (
+                        <div>
+                          <b>{dateInfo.formatted}</b>
+                          <div style={{ fontSize: '7.5pt', color: '#64748b' }}>{dateInfo.sub}</div>
+                        </div>
+                      ) : (
+                        dateInfo.formatted
+                      )}
                     </td>
                     {isSuperAdmin && (
                       <td style={{ padding: '8px 12px', color: '#1e293b', fontWeight: '700', fontSize: '9pt' }}>
@@ -2122,15 +2312,26 @@ const Reports = () => {
                     ) : (
                       <>
                         {activeTab === 'Hygiene & Alerts Report' && (
-                          <td style={{ 
-                            padding: '8px 12px', 
-                            color: (row.val2 === 'Danger' || row.val2 === 'High' || row.val2 === 'Critical') ? '#e11d48' : '#2563eb', 
-                            fontWeight: 'bold', 
-                            fontSize: '9pt', 
-                            textAlign: 'center' 
-                          }}>
-                            {row.val2 || row.severity || 'Low'}
-                          </td>
+                          <>
+                            <td style={{ 
+                              padding: '8px 12px', 
+                              fontWeight: 'bold', 
+                              fontSize: '9pt', 
+                              textAlign: 'center',
+                              color: row.status === 'Resolved' ? '#059669' : '#dc2626'
+                            }}>
+                              {row.status === 'Resolved' ? 'Resolved' : 'Active'}
+                            </td>
+                            <td style={{ 
+                              padding: '8px 12px', 
+                              color: (row.val2 === 'Danger' || row.val2 === 'High' || row.val2 === 'Critical') ? '#e11d48' : '#2563eb', 
+                              fontWeight: 'bold', 
+                              fontSize: '9pt', 
+                              textAlign: 'center' 
+                            }}>
+                              {row.val2 || row.severity || 'Low'}
+                            </td>
+                          </>
                         )}
                         <td style={{ padding: '8px 12px', color: '#1e293b', fontWeight: '600', fontSize: '9pt' }}>
                           {activeTab === 'Usage Analytics' ? `${row.val1} visits` : row.val1}

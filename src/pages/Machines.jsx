@@ -1374,26 +1374,24 @@ const Machines = () => {
       return;
     }
 
-    const columns = ['MACHINE ID', 'OMC', 'ASSIGNED RO', 'STATUS', 'RATING', 'LIVE TEMP', 'LIVE HUMIDITY', 'LIVE ODOUR', 'LIVE NH3', 'LIVE H2S', 'WATER LEVEL'];
+    const columns = ['MACHINE ID', 'OMC', 'ASSIGNED RO', 'STATUS', 'RATING'];
     const rows = filteredMachines.map(m => {
-      const s = String(m.status || '').trim().toUpperCase();
-      const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
+      const parentRo = getRo(m.roId);
+      const isRoInactive = (m.ro_status && String(m.ro_status).toLowerCase() === 'inactive') || (parentRo && String(parentRo.status || '').toLowerCase() === 'inactive');
+      const s = isRoInactive ? 'INACTIVE' : String(m.status || '').trim().toUpperCase();
+      const isActive = !isRoInactive && (s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL');
+      const rating = getMachineRating(m);
       return [
         m.id || m.name || 'Machine',
-        getClientNameByRo(m.roId),
-        getRoName(m.roId),
+        getClientNameByRo(m.roId) || 'IOCL',
+        getRoName(m.roId) || 'Unassigned',
         isActive ? 'Active' : 'Inactive',
-        m.liveTemp || '28°C',
-        m.liveHumidity || '50%',
-        m.liveOdour || 'Normal',
-        m.liveNh3 || '0 PPM',
-        m.liveH2s || '0 PPM',
-        m.liveWater || 'Normal'
+        `${Number(rating || 5.0).toFixed(1)} / 5.0`
       ];
     });
 
     exportToPDF(
-      'IoT Machines Inventory & Telemetry Report',
+      'IoT Machines Inventory Report',
       columns,
       rows,
       {
@@ -1554,15 +1552,9 @@ const Machines = () => {
             <tr style={{ borderBottom: '2px solid #047857', fontSize: '9pt', color: '#ffffff', textTransform: 'uppercase', backgroundColor: '#059669' }}>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>MACHINE ID</th>
               <th style={{ padding: '8px 10px', fontWeight: '700' }}>OMC</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700' }}>RO NAME</th>
+              <th style={{ padding: '8px 10px', fontWeight: '700' }}>ASSIGNED RO</th>
               <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>STATUS</th>
               <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>RATING</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>LIVE TEMP</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>LIVE HUMIDITY</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>LIVE ODOUR</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>LIVE NH3</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>LIVE H2S</th>
-              <th style={{ padding: '8px 10px', fontWeight: '700', textAlign: 'center' }}>WATER LEVEL</th>
             </tr>
           </thead>
 
@@ -1674,8 +1666,10 @@ const Machines = () => {
           {/* Full dataset for @media print */}
           <tbody className="print-only-table">
             {filteredMachines.length > 0 ? filteredMachines.map((machine, index) => {
-              const s = String(machine.status || '').trim().toUpperCase();
-              const isActive = s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL' || (s !== 'INACTIVE' && s !== 'OFFLINE' && s !== 'DISABLED' && s !== '');
+              const parentRo = getRo(machine.roId);
+              const isRoInactive = (machine.ro_status && String(machine.ro_status).toLowerCase() === 'inactive') || (parentRo && String(parentRo.status || '').toLowerCase() === 'inactive');
+              const s = isRoInactive ? 'INACTIVE' : String(machine.status || '').trim().toUpperCase();
+              const isActive = !isRoInactive && (s === 'ACTIVE' || s === 'ONLINE' || s === 'RUNNING' || s === 'OPERATIONAL');
               const rating = getMachineRating(machine);
               return (
                 <tr key={`print-m-${index}`} style={{ borderBottom: '1px solid #cbd5e1' }}>
@@ -1683,13 +1677,7 @@ const Machines = () => {
                   <td style={{ padding: '8px 10px', color: '#334155', fontSize: '9pt' }}>{getClientNameByRo(machine.roId)}</td>
                   <td style={{ padding: '8px 10px', color: '#334155', fontSize: '9pt' }}>{getRoName(machine.roId) || 'Unassigned'}</td>
                   <td style={{ padding: '8px 10px', color: isActive ? '#059669' : '#e11d48', fontWeight: 'bold', fontSize: '9pt', textAlign: 'center' }}>{isActive ? 'Active' : 'Inactive'}</td>
-                  <td style={{ padding: '8px 10px', color: '#d97706', fontWeight: 'bold', fontSize: '9pt', textAlign: 'center' }}>★ {rating.toFixed(1)}</td>
-                  <td style={{ padding: '8px 10px', color: '#334155', fontSize: '9pt', textAlign: 'center' }}>{machine.liveTemp || '28°C'}</td>
-                  <td style={{ padding: '8px 10px', color: '#334155', fontSize: '9pt', textAlign: 'center' }}>{machine.liveHumidity || '50%'}</td>
-                  <td style={{ padding: '8px 10px', color: '#334155', fontSize: '9pt', textAlign: 'center' }}>{machine.liveOdour || 'Normal'}</td>
-                  <td style={{ padding: '8px 10px', color: '#0284c7', fontSize: '9pt', textAlign: 'center', fontWeight: '600' }}>{machine.liveNh3 || '0 PPM'}</td>
-                  <td style={{ padding: '8px 10px', color: '#8b5cf6', fontSize: '9pt', textAlign: 'center', fontWeight: '600' }}>{machine.liveH2s || '0 PPM'}</td>
-                  <td style={{ padding: '8px 10px', color: '#334155', fontSize: '9pt', textAlign: 'center' }}>{machine.liveWater || 'Normal'}</td>
+                  <td style={{ padding: '8px 10px', color: '#d97706', fontWeight: 'bold', fontSize: '9pt', textAlign: 'center' }}>★ {Number(rating || 5.0).toFixed(1)}</td>
                 </tr>
               );
             }) : null}

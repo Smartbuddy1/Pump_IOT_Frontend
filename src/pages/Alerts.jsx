@@ -44,7 +44,9 @@ const Alerts = () => {
 
   const [alerts, setAlerts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('All'); // 'All', 'Critical', 'High', 'Medium', 'Resolved'
+  const [activeTab, setActiveTab] = useState('Active'); // 'Active' (Live) or 'Logs' (All Alert Logs & History)
+  const [statusFilter, setStatusFilter] = useState('All'); // 'All', 'Active', 'Resolved'
+  const [activeFilter, setActiveFilter] = useState('All'); // 'All', 'Danger', 'Low', 'Resolved'
   const [machineFilter, setMachineFilter] = useState('All');
   const [roFilter, setRoFilter] = useState('All');
   const [selectedAlert, setSelectedAlert] = useState(null);
@@ -52,6 +54,18 @@ const Alerts = () => {
   const itemsPerPage = 10;
 
   const [allMachines, setAllMachines] = useState([]);
+  const [allRos, setAllRos] = useState([]);
+
+  const matchedUserRo = allRos.find(r => String(r.id) === String(user?.roId || user?.ro_id));
+  const currentRoName = isRoUser 
+    ? (matchedUserRo?.name || alerts[0]?.roName || alerts[0]?.ro || user?.roName || 'Sanjivani petroleum')
+    : null;
+
+  useEffect(() => {
+    if (isRoUser && currentRoName) {
+      setRoFilter(currentRoName);
+    }
+  }, [isRoUser, currentRoName]);
 
   const fetchAlerts = async () => {
     try {
@@ -81,6 +95,7 @@ const Alerts = () => {
       }
 
       setAllMachines(machines);
+      setAllRos(ros);
 
       const finalAlerts = getConsolidatedAlerts({
         rawAlerts,
@@ -186,27 +201,32 @@ const Alerts = () => {
       }
     }
 
-    // 2. Check Active Card Filter
+    // 2. Tab & Status Filtering
+    const isResolved = alert.status === 'Resolved';
+    if (activeTab === 'Active' && isResolved) return false;
+    if (statusFilter === 'Active' && isResolved) return false;
+    if (statusFilter === 'Resolved' && !isResolved) return false;
+
+    // 3. Check Active Card Filter
     let matchesFilter = true;
-    if (activeFilter === 'All') {
-      matchesFilter = alert.status !== 'Resolved';
-    } else if (activeFilter === 'Danger' || activeFilter === 'High' || activeFilter === 'Critical') {
-      matchesFilter = (alert.severity === 'Danger' || alert.severity === 'Critical' || alert.severity === 'High') && alert.status !== 'Resolved';
+    if (activeFilter === 'Danger' || activeFilter === 'High' || activeFilter === 'Critical') {
+      matchesFilter = alert.severity === 'Danger' || alert.severity === 'Critical' || alert.severity === 'High';
     } else if (activeFilter === 'Low' || activeFilter === 'Info') {
-      matchesFilter = (alert.severity === 'Low' || alert.severity === 'Info') && alert.status !== 'Resolved';
-    } else if (activeFilter === 'Neutral') {
-      // Neutral range produces ZERO alerts as configured
-      matchesFilter = false;
+      matchesFilter = alert.severity === 'Low' || alert.severity === 'Info';
     } else if (activeFilter === 'Resolved') {
-      matchesFilter = alert.status === 'Resolved';
+      matchesFilter = isResolved;
+    } else if (activeFilter === 'Active') {
+      matchesFilter = !isResolved;
+    } else if (activeFilter === 'Neutral') {
+      matchesFilter = false;
     }
 
-    // 3. Check RO Filter
-    const matchesRo = roFilter === 'All' || 
+    // 4. Check RO Filter
+    const matchesRo = isRoUser || roFilter === 'All' || 
       String(alert.ro || alert.roName || '').toLowerCase() === String(roFilter).toLowerCase() ||
       String(alert.ro_id || alert.roId || '') === String(roFilter);
 
-    // 4. Check Machine Filter
+    // 5. Check Machine Filter
     const matchesMachine = machineFilter === 'All' || 
       String(alert.machineId).toLowerCase() === String(machineFilter).toLowerCase() ||
       String(alert.machineName || '').toLowerCase() === String(machineFilter).toLowerCase();
@@ -222,18 +242,22 @@ const Alerts = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeFilter, machineFilter, roFilter]);
+  }, [searchTerm, activeTab, statusFilter, activeFilter, machineFilter, roFilter]);
 
   // Calculate stats for Summary Cards (scoped to selected RO if roFilter is active)
   const roScopedAlerts = alerts.filter(a => {
-    if (roFilter === 'All') return true;
+    if (isRoUser || roFilter === 'All') return true;
     return String(a.ro || a.roName || '').toLowerCase() === String(roFilter).toLowerCase() ||
            String(a.ro_id || a.roId || '') === String(roFilter);
   });
   const activeAlerts = roScopedAlerts.filter(a => a.status !== 'Resolved');
-  const totalAlerts = activeAlerts.length;
+  const resolvedAlerts = roScopedAlerts.filter(a => a.status === 'Resolved');
+  const totalActiveAlerts = activeAlerts.length;
+  const totalResolvedAlerts = resolvedAlerts.length;
   const lowAlerts = activeAlerts.filter(a => a.severity === 'Low' || a.severity === 'Info').length;
   const dangerAlerts = activeAlerts.filter(a => a.severity === 'Danger' || a.severity === 'Critical' || a.severity === 'High').length;
+  const totalDangerLogs = roScopedAlerts.filter(a => a.severity === 'Danger' || a.severity === 'Critical' || a.severity === 'High').length;
+  const totalLowLogs = roScopedAlerts.filter(a => a.severity === 'Low' || a.severity === 'Info').length;
 
   const uniqueRos = Array.from(new Set([
     ...allMachines.map(m => m.roName || m.ro).filter(Boolean),
@@ -318,7 +342,7 @@ const Alerts = () => {
       return;
     }
 
-    const columns = ['MACHINE ID', 'DATE & TIME', 'RO NAME', 'SEVERITY', 'SENSOR ALERT'];
+    const columns = ['MACHINE ID', 'DATE & TIME', 'RO NAME', 'STATUS', 'SEVERITY', 'SENSOR ALERT'];
     const rows = filteredAlerts.map(alert => {
       const dateInfo = formatDateDisplay(alert.rawDate || alert.date || alert.time, alert.rawTime || alert.time);
       const displayMac = (!isNaN(Number(alert.machineId))
@@ -328,19 +352,21 @@ const Alerts = () => {
         displayMac || 'Machine',
         `${dateInfo.formatted} (${dateInfo.sub})`,
         alert.ro || alert.roName || '-',
+        alert.status === 'Resolved' ? 'Resolved' : 'Active',
         alert.severity || 'Low',
         alert.issue || alert.message || 'Telemetry Alert'
       ];
     });
 
     exportToPDF(
-      'System Telemetry Alerts Report',
+      activeTab === 'Logs' ? 'System Alert Logs & History Report' : 'System Telemetry Alerts Report',
       columns,
       rows,
       {
         machineName: machineFilter !== 'All' ? machineFilter : 'All Machines',
-        dateRange: `Severity Filter: ${activeFilter}`,
-        generatedBy: 'SuperAdmin (9284188705)'
+        roName: isRoUser ? currentRoName : (roFilter !== 'All' ? roFilter : undefined),
+        dateRange: `Tab: ${activeTab === 'Logs' ? 'All Alert Logs' : 'Active Live Alerts'} | Status: ${statusFilter}`,
+        generatedBy: user?.name ? `${user.name} (${user.role})` : 'SuperAdmin (9284188705)'
       }
     );
   };
@@ -388,6 +414,7 @@ const Alerts = () => {
       <PrintHeader 
         title="SYSTEM TELEMETRY ALERTS REPORT"
         machineName={machineFilter !== 'All' ? machineFilter : 'All Machines'}
+        roName={isRoUser ? currentRoName : (roFilter !== 'All' ? roFilter : 'All ROs')}
         dateRange={`Severity: ${activeFilter}`}
       />
 
@@ -396,7 +423,7 @@ const Alerts = () => {
         <div>
           <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-primary)', margin: '0 0 0.5rem 0', flexWrap: 'wrap' }}>
             <Bell color="#f59e0b" size={32} />
-            Live System Alerts
+            {activeTab === 'Active' ? 'Live System Alerts' : 'Alert Logs & History'}
             <span style={{ 
               display: 'inline-flex', 
               alignItems: 'center', 
@@ -404,17 +431,21 @@ const Alerts = () => {
               fontSize: '0.75rem', 
               padding: '0.2rem 0.65rem', 
               borderRadius: '9999px', 
-              background: 'rgba(239, 68, 68, 0.1)', 
-              color: '#ef4444', 
-              border: '1px solid rgba(239, 68, 68, 0.25)', 
+              background: activeTab === 'Active' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)', 
+              color: activeTab === 'Active' ? '#ef4444' : '#2563eb', 
+              border: activeTab === 'Active' ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(59, 130, 246, 0.25)', 
               fontWeight: '700',
               letterSpacing: '0.05em'
             }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block', boxShadow: '0 0 6px #ef4444' }}></span>
-              LIVE MONITORING
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: activeTab === 'Active' ? '#ef4444' : '#2563eb', display: 'inline-block', boxShadow: activeTab === 'Active' ? '0 0 6px #ef4444' : '0 0 6px #2563eb' }}></span>
+              {activeTab === 'Active' ? 'LIVE MONITORING' : 'AUDIT LOGS'}
             </span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Active real-time telemetry alerts for Temperature, Humidity, Odour (NH3), and Water Level. Auto-updates every 10 seconds.</p>
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+            {activeTab === 'Active' 
+              ? 'Active real-time telemetry alerts for Temperature, Humidity, Odour (NH3), and Water Level. Auto-updates every 10 seconds.'
+              : 'Complete historical logs of all system alerts with exact trigger dates, timestamps, and resolution statuses.'}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button 
@@ -427,38 +458,94 @@ const Alerts = () => {
         </div>
       </div>
 
-      {/* Summary Cards Section */}
-      <div className="stat-cards-grid alerts-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-        
-        {/* Card 1: Total Alerts */}
+      {/* Navigation Tabs */}
+      <div className="no-print" style={{ display: 'flex', gap: '2rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1.5rem', paddingBottom: '0.5rem' }}>
         <div 
           onClick={() => {
+            setActiveTab('Active');
             setActiveFilter('All');
+            setStatusFilter('All');
             setCurrentPage(1);
           }}
           style={{ 
-            background: activeFilter === 'All' ? 'rgba(139, 92, 246, 0.08)' : 'var(--surface-bg)', 
-            border: activeFilter === 'All' ? '2px solid #8b5cf6' : '1px solid var(--border-color)', 
-            borderRadius: '12px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', 
-            boxShadow: activeFilter === 'All' ? '0 4px 12px rgba(139, 92, 246, 0.15)' : '0 2px 4px rgba(0, 0, 0, 0.04)', 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', 
+            color: activeTab === 'Active' ? '#8b5cf6' : 'var(--text-secondary)',
+            fontWeight: activeTab === 'Active' ? '600' : '500',
+            borderBottom: activeTab === 'Active' ? '2px solid #8b5cf6' : 'none',
+            paddingBottom: '0.5rem',
+            marginBottom: '-0.6rem'
+          }}
+        >
+          <Bell size={18} />
+          Active Alerts
+          <span style={{ 
+            background: activeTab === 'Active' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(0,0,0,0.06)', 
+            color: activeTab === 'Active' ? '#8b5cf6' : 'var(--text-secondary)',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: '700' 
+          }}>
+            {totalActiveAlerts}
+          </span>
+        </div>
+
+        <div 
+          onClick={() => {
+            setActiveTab('Logs');
+            setActiveFilter('All');
+            setStatusFilter('All');
+            setCurrentPage(1);
+          }}
+          style={{ 
+            display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', 
+            color: activeTab === 'Logs' ? '#8b5cf6' : 'var(--text-secondary)',
+            fontWeight: activeTab === 'Logs' ? '600' : '500',
+            borderBottom: activeTab === 'Logs' ? '2px solid #8b5cf6' : 'none',
+            paddingBottom: '0.5rem',
+            marginBottom: '-0.6rem'
+          }}
+        >
+          <FileText size={18} />
+          Alert Logs & History
+          <span style={{ 
+            background: activeTab === 'Logs' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(0,0,0,0.06)', 
+            color: activeTab === 'Logs' ? '#8b5cf6' : 'var(--text-secondary)',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: '700' 
+          }}>
+            {roScopedAlerts.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Summary Cards Section */}
+      <div className="stat-cards-grid alerts-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+        
+        {/* Card 1: Active Alerts */}
+        <div 
+          onClick={() => {
+            setActiveFilter('All');
+            if (activeTab === 'Logs') setStatusFilter('Active');
+            setCurrentPage(1);
+          }}
+          style={{ 
+            background: (activeFilter === 'All' && statusFilter !== 'Resolved') ? 'rgba(139, 92, 246, 0.08)' : 'var(--surface-bg)', 
+            border: (activeFilter === 'All' && statusFilter !== 'Resolved') ? '2px solid #8b5cf6' : '1px solid var(--border-color)', 
+            borderRadius: '12px', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', 
+            boxShadow: (activeFilter === 'All' && statusFilter !== 'Resolved') ? '0 4px 12px rgba(139, 92, 246, 0.15)' : '0 2px 4px rgba(0, 0, 0, 0.04)', 
             cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none'
           }}
         >
-          <div style={{ background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', padding: '1rem', borderRadius: '50%' }}>
-            <Activity size={24} />
+          <div style={{ background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', padding: '0.85rem', borderRadius: '50%' }}>
+            <Activity size={22} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Total Alerts</p>
-              {activeFilter === 'All' && (
-                <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#8b5cf6', background: 'rgba(139,92,246,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Active</span>
-              )}
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Active Alerts</p>
+              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#8b5cf6', background: 'rgba(139,92,246,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Active</span>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{totalAlerts}</h2>
+            <h2 style={{ margin: '4px 0 0 0', fontSize: '1.6rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{totalActiveAlerts}</h2>
           </div>
         </div>
 
-        {/* Card 2: Low Alerts */}
+        {/* Card 2: Low / Warning Alerts */}
         <div 
           onClick={() => {
             setActiveFilter(prev => prev === 'Low' ? 'All' : 'Low');
@@ -467,22 +554,20 @@ const Alerts = () => {
           style={{ 
             background: activeFilter === 'Low' ? 'rgba(59, 130, 246, 0.08)' : 'var(--surface-bg)', 
             border: activeFilter === 'Low' ? '2px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.2)', 
-            borderRadius: '12px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', 
+            borderRadius: '12px', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', 
             boxShadow: activeFilter === 'Low' ? '0 4px 12px rgba(59, 130, 246, 0.15)' : '0 2px 4px rgba(59, 130, 246, 0.04)', 
             cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none'
           }}
         >
-          <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '1rem', borderRadius: '50%' }}>
-            <AlertTriangle size={24} />
+          <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '0.85rem', borderRadius: '50%' }}>
+            <AlertTriangle size={22} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Low</p>
-              {activeFilter === 'Low' && (
-                <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#2563eb', background: 'rgba(59,130,246,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Active</span>
-              )}
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Low / Refill</p>
+              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#2563eb', background: 'rgba(59,130,246,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Warning</span>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 'bold', color: '#3b82f6' }}>{lowAlerts}</h2>
+            <h2 style={{ margin: '4px 0 0 0', fontSize: '1.6rem', fontWeight: 'bold', color: '#3b82f6' }}>{activeTab === 'Logs' ? totalLowLogs : lowAlerts}</h2>
           </div>
         </div>
 
@@ -495,22 +580,48 @@ const Alerts = () => {
           style={{ 
             background: (activeFilter === 'Danger' || activeFilter === 'High') ? 'rgba(239, 68, 68, 0.08)' : 'var(--surface-bg)', 
             border: (activeFilter === 'Danger' || activeFilter === 'High') ? '2px solid #ef4444' : '1px solid rgba(239, 68, 68, 0.2)', 
-            borderRadius: '12px', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', 
+            borderRadius: '12px', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', 
             boxShadow: (activeFilter === 'Danger' || activeFilter === 'High') ? '0 4px 12px rgba(239, 68, 68, 0.15)' : '0 2px 4px rgba(239, 68, 68, 0.04)', 
             cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none'
           }}
         >
-          <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '1rem', borderRadius: '50%' }}>
-            <ShieldAlert size={24} />
+          <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.85rem', borderRadius: '50%' }}>
+            <ShieldAlert size={22} />
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Danger</p>
-              {(activeFilter === 'Danger' || activeFilter === 'High') && (
-                <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Active</span>
-              )}
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Danger</p>
+              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Critical</span>
             </div>
-            <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 'bold', color: '#ef4444' }}>{dangerAlerts}</h2>
+            <h2 style={{ margin: '4px 0 0 0', fontSize: '1.6rem', fontWeight: 'bold', color: '#ef4444' }}>{activeTab === 'Logs' ? totalDangerLogs : dangerAlerts}</h2>
+          </div>
+        </div>
+
+        {/* Card 4: Resolved Logs */}
+        <div 
+          onClick={() => {
+            setActiveTab('Logs');
+            setActiveFilter('All');
+            setStatusFilter(prev => prev === 'Resolved' ? 'All' : 'Resolved');
+            setCurrentPage(1);
+          }}
+          style={{ 
+            background: statusFilter === 'Resolved' ? 'rgba(16, 185, 129, 0.08)' : 'var(--surface-bg)', 
+            border: statusFilter === 'Resolved' ? '2px solid #10b981' : '1px solid rgba(16, 185, 129, 0.25)', 
+            borderRadius: '12px', padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', 
+            boxShadow: statusFilter === 'Resolved' ? '0 4px 12px rgba(16, 185, 129, 0.15)' : '0 2px 4px rgba(16, 185, 129, 0.04)', 
+            cursor: 'pointer', transition: 'all 0.2s', userSelect: 'none'
+          }}
+        >
+          <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '0.85rem', borderRadius: '50%' }}>
+            <CheckCircle size={22} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: '600' }}>Resolved Logs</p>
+              <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Logs</span>
+            </div>
+            <h2 style={{ margin: '4px 0 0 0', fontSize: '1.6rem', fontWeight: 'bold', color: '#10b981' }}>{totalResolvedAlerts}</h2>
           </div>
         </div>
 
@@ -552,11 +663,35 @@ const Alerts = () => {
           )}
         </div>
 
+        {/* Status Filter */}
+        <select 
+          value={statusFilter} 
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          style={{ 
+            padding: '0.85rem 1.25rem', 
+            borderRadius: '0.5rem', 
+            border: '1px solid var(--border-color)', 
+            backgroundColor: 'var(--surface-bg)', 
+            color: 'var(--text-primary)', 
+            outline: 'none', 
+            cursor: 'pointer', 
+            minWidth: '150px',
+            fontSize: '0.9rem',
+            fontWeight: '500'
+          }}
+        >
+          <option value="All">{activeTab === 'Logs' ? 'All Status (Logs)' : 'All Active'}</option>
+          <option value="Active">Active Only</option>
+          <option value="Resolved">Resolved Only</option>
+        </select>
 
         {/* RO Filter */}
-        {uniqueRos.length > 0 && (
+        {isRoUser ? (
           <select 
-            value={roFilter} 
+            value={currentRoName || roFilter} 
             onChange={(e) => setRoFilter(e.target.value)}
             style={{ 
               padding: '0.85rem 1.25rem', 
@@ -565,17 +700,40 @@ const Alerts = () => {
               backgroundColor: 'var(--surface-bg)', 
               color: 'var(--text-primary)', 
               outline: 'none', 
-              cursor: 'pointer', 
-              minWidth: '150px',
+              cursor: 'default', 
+              minWidth: '160px',
               fontSize: '0.9rem',
-              fontWeight: '500'
+              fontWeight: '600'
             }}
           >
-            <option value="All">All ROs</option>
-            {uniqueRos.map(rName => (
-              <option key={rName} value={rName}>{rName}</option>
-            ))}
+            <option value={currentRoName || 'Sanjivani petroleum'}>
+              {currentRoName || 'Sanjivani petroleum'}
+            </option>
           </select>
+        ) : (
+          uniqueRos.length > 0 && (
+            <select 
+              value={roFilter} 
+              onChange={(e) => setRoFilter(e.target.value)}
+              style={{ 
+                padding: '0.85rem 1.25rem', 
+                borderRadius: '0.5rem', 
+                border: '1px solid var(--border-color)', 
+                backgroundColor: 'var(--surface-bg)', 
+                color: 'var(--text-primary)', 
+                outline: 'none', 
+                cursor: 'pointer', 
+                minWidth: '150px',
+                fontSize: '0.9rem',
+                fontWeight: '500'
+              }}
+            >
+              <option value="All">All ROs</option>
+              {uniqueRos.map(rName => (
+                <option key={rName} value={rName}>{rName}</option>
+              ))}
+            </select>
+          )
         )}
 
         {/* Machine Filter */}
@@ -610,6 +768,7 @@ const Alerts = () => {
               <th style={{ padding: '1.25rem 1.5rem', fontWeight: '700' }}>MACHINE ID</th>
               <th style={{ padding: '1.25rem 1.5rem', fontWeight: '700' }}>DATE & TIME</th>
               <th style={{ padding: '1.25rem 1.5rem', fontWeight: '700' }}>RO NAME</th>
+              <th style={{ padding: '1.25rem 1.5rem', fontWeight: '700', textAlign: 'center' }}>STATUS</th>
               <th style={{ padding: '1.25rem 1.5rem', fontWeight: '700', textAlign: 'center' }}>SEVERITY</th>
               <th style={{ padding: '1.25rem 1.5rem', fontWeight: '700' }}>SENSOR ALERT</th>
             </tr>
@@ -623,13 +782,14 @@ const Alerts = () => {
               const displayMac = (!isNaN(Number(alert.machineId))
                 ? (allMachines.find(m => String(m.id) === String(alert.machineId) || String(m.db_id) === String(alert.machineId))?.name || alert.machineName || alert.machineId)
                 : (alert.machineName || alert.machineId));
+              const isResolved = alert.status === 'Resolved';
               return (
                 <tr 
                   key={idx} 
                   style={{ 
                     borderBottom: '1px solid var(--border-color)', 
                     transition: 'background 0.2s', 
-                    backgroundColor: alert.status === 'Open' ? (alert.severity === 'Danger' || alert.severity === 'High' || alert.severity === 'Critical' ? 'rgba(239, 68, 68, 0.04)' : alert.severity === 'Low' || alert.severity === 'Info' ? 'rgba(59, 130, 246, 0.04)' : 'transparent') : 'transparent' 
+                    backgroundColor: !isResolved ? (alert.severity === 'Danger' || alert.severity === 'High' || alert.severity === 'Critical' ? 'rgba(239, 68, 68, 0.04)' : alert.severity === 'Low' || alert.severity === 'Info' ? 'rgba(59, 130, 246, 0.04)' : 'transparent') : 'transparent' 
                   }}
                 >
                   <td style={{ padding: '1.25rem 1.5rem', fontWeight: 'bold', color: '#8b5cf6' }}>{displayMac}</td>
@@ -644,6 +804,41 @@ const Alerts = () => {
                     </div>
                   </td>
                   <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-primary)', fontWeight: '600' }}>{alert.ro}</td>
+                  <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
+                    {isResolved ? (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '0.25rem 0.65rem',
+                        borderRadius: '999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)'
+                      }}>
+                        <CheckCircle size={12} />
+                        Resolved
+                      </span>
+                    ) : (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '0.25rem 0.65rem',
+                        borderRadius: '999px',
+                        fontSize: '0.75rem',
+                        fontWeight: '700',
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.3)'
+                      }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block', boxShadow: '0 0 6px #ef4444' }}></span>
+                        Active
+                      </span>
+                    )}
+                  </td>
                   <td style={{ padding: '1.25rem 1.5rem', textAlign: 'center' }}>
                     <span style={{ 
                       padding: '0.25rem 0.65rem', 
@@ -668,10 +863,10 @@ const Alerts = () => {
               );
             }) : (
               <tr>
-                <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   {activeFilter === 'Neutral' 
                     ? 'No Alerts — Neutral operating range is normal & safe (Alerts trigger only for Low and Danger).' 
-                    : (searchTerm ? `No Alerts found matching "${searchTerm}"` : 'No active alerts found')}
+                    : (searchTerm ? `No Alerts found matching "${searchTerm}"` : (activeTab === 'Logs' ? 'No alert logs recorded yet' : 'No active alerts found'))}
                 </td>
               </tr>
             )}
@@ -684,11 +879,13 @@ const Alerts = () => {
               const displayMac = (!isNaN(Number(alert.machineId))
                 ? (allMachines.find(m => String(m.id) === String(alert.machineId) || String(m.db_id) === String(alert.machineId))?.name || alert.machineName || alert.machineId)
                 : (alert.machineName || alert.machineId));
+              const isResolved = alert.status === 'Resolved';
               return (
                 <tr key={`print-alert-${idx}`} style={{ borderBottom: '1px solid #cbd5e1' }}>
                   <td style={{ padding: '8px 12px', fontWeight: 'bold', color: '#1e293b', fontSize: '9pt' }}>{displayMac}</td>
                   <td style={{ padding: '8px 12px', color: '#334155', fontSize: '9pt' }}>{dateInfo.formatted} ({dateInfo.sub})</td>
                   <td style={{ padding: '8px 12px', color: '#334155', fontSize: '9pt' }}>{alert.ro}</td>
+                  <td style={{ padding: '8px 12px', color: isResolved ? '#059669' : '#e11d48', fontWeight: 'bold', fontSize: '9pt', textAlign: 'center' }}>{isResolved ? 'Resolved' : 'Active'}</td>
                   <td style={{ padding: '8px 12px', color: (alert.severity === 'Danger' || alert.severity === 'Critical' || alert.severity === 'High') ? '#e11d48' : '#2563eb', fontWeight: 'bold', fontSize: '9pt', textAlign: 'center' }}>{alert.severity || 'Low'}</td>
                   <td style={{ padding: '8px 12px', color: '#1e293b', fontSize: '9pt' }}>{alert.issue}</td>
                 </tr>
