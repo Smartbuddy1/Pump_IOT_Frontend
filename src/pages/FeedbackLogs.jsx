@@ -47,6 +47,7 @@ const FeedbackLogs = () => {
 
   const [feedbacks, setFeedbacks] = useState([]);
   const [allRos, setAllRos] = useState([]);
+  const [allOmcs, setAllOmcs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,15 +61,21 @@ const FeedbackLogs = () => {
   const fetchFeedbacks = async () => {
     try {
       setLoading(true);
-      const [res, roRes] = await Promise.all([
+      const [res, roRes, omcRes] = await Promise.all([
         api.get('/feedback'),
-        api.get('/ro').catch(() => ({ data: { data: [] } }))
+        api.get('/ro').catch(() => ({ data: { data: [] } })),
+        api.get('/omc').catch(() => ({ data: { data: [] } }))
       ]);
       if (res.data?.data) {
-        setFeedbacks(res.data.data);
+        setFeedbacks(Array.isArray(res.data.data) ? res.data.data : []);
       }
-      if (roRes.data?.data) {
-        setAllRos(Array.isArray(roRes.data.data) ? roRes.data.data : []);
+      if (roRes.data?.data || roRes.data) {
+        const rawRos = roRes.data?.data || (Array.isArray(roRes.data) ? roRes.data : []);
+        setAllRos(Array.isArray(rawRos) ? rawRos : []);
+      }
+      if (omcRes.data?.data || omcRes.data) {
+        const rawOmcs = omcRes.data?.data || (Array.isArray(omcRes.data) ? omcRes.data : []);
+        setAllOmcs(Array.isArray(rawOmcs) ? rawOmcs : []);
       }
     } catch (err) {
       console.error('Error fetching feedbacks:', err);
@@ -81,6 +88,13 @@ const FeedbackLogs = () => {
     fetchFeedbacks();
     const interval = setInterval(fetchFeedbacks, 10000);
 
+    const handleDataChanged = () => {
+      fetchFeedbacks();
+    };
+
+    window.addEventListener('app_data_updated', handleDataChanged);
+    window.addEventListener('storage', handleDataChanged);
+
     if (socket) {
       socket.on('new_feedback', (newFb) => {
         setFeedbacks(prev => [newFb, ...prev]);
@@ -89,11 +103,34 @@ const FeedbackLogs = () => {
 
     return () => {
       clearInterval(interval);
+      window.removeEventListener('app_data_updated', handleDataChanged);
+      window.removeEventListener('storage', handleDataChanged);
       if (socket) {
         socket.off('new_feedback');
       }
     };
   }, [socket]);
+
+  // Map OMC ID to OMC Name for reliable resolution across relations
+  const omcIdToName = {};
+  allOmcs.forEach(o => {
+    if (o?.id && o?.name) {
+      omcIdToName[String(o.id)] = String(o.name).trim();
+    }
+  });
+
+  const resolveOmcName = (fb) => {
+    if (fb?.omc_name && String(fb.omc_name).trim()) return String(fb.omc_name).trim();
+    if (fb?.omc_id && omcIdToName[String(fb.omc_id)]) return omcIdToName[String(fb.omc_id)];
+    if (fb?.ro_id) {
+      const matchedRo = allRos.find(r => String(r.id) === String(fb.ro_id));
+      if (matchedRo) {
+        if (matchedRo.omc_name) return String(matchedRo.omc_name).trim();
+        if (matchedRo.omc_id && omcIdToName[String(matchedRo.omc_id)]) return omcIdToName[String(matchedRo.omc_id)];
+      }
+    }
+    return '';
+  };
 
   // Derive specific RO and OMC for role isolation (RO Manager & OMC Admin)
   const matchedUserRo = allRos.find(r => String(r.id) === String(user?.roId || user?.ro_id));
@@ -102,20 +139,33 @@ const FeedbackLogs = () => {
     : null;
 
   const currentOmcName = (isRoUser || isOmcAdmin)
-    ? (feedbacks[0]?.omc_name || matchedUserRo?.omc_name || user?.omcName || (isRoUser ? 'HPCL' : 'IOCL'))
+    ? (resolveOmcName(feedbacks[0] || {}) || matchedUserRo?.omc_name || omcIdToName[String(user?.omcId || user?.omc_id)] || user?.omcName || (isRoUser ? 'HPCL' : 'IOCL'))
     : null;
 
-  // Unique OMCs for filter dropdown
-  const uniqueOmcs = Array.from(new Set(feedbacks.map(f => f.omc_name).filter(Boolean)));
+  // Unique OMCs for filter dropdown:
+  // Includes all registered OMCs from allOmcs, plus any OMCs associated with ROs or feedbacks
+  const uniqueOmcs = Array.from(new Set([
+    ...allOmcs.map(o => o.name),
+    ...allRos.map(r => r.omc_name || omcIdToName[String(r.omc_id || r.omcId)]),
+    ...feedbacks.map(f => resolveOmcName(f))
+  ].map(s => String(s || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
   // Unique ROs for filter dropdown (dynamically scoped if omcFilter is active)
   const uniqueRos = Array.from(new Set([
     ...feedbacks
-      .filter(f => omcFilter === 'ALL' || f.omc_name === omcFilter)
+      .filter(f => {
+        if (omcFilter === 'ALL') return true;
+        const fbOmc = resolveOmcName(f);
+        return String(fbOmc).toLowerCase().trim() === String(omcFilter).toLowerCase().trim();
+      })
       .map(f => f.ro_name)
       .filter(Boolean),
     ...allRos
-      .filter(r => omcFilter === 'ALL' || !r.omc_name || r.omc_name === omcFilter)
+      .filter(r => {
+        if (omcFilter === 'ALL') return true;
+        const rOmc = r.omc_name || omcIdToName[String(r.omc_id || r.omcId)];
+        return String(rOmc || '').toLowerCase().trim() === String(omcFilter).toLowerCase().trim();
+      })
       .map(r => r.name)
       .filter(Boolean)
   ])).sort((a, b) => a.localeCompare(b));
@@ -131,7 +181,12 @@ const FeedbackLogs = () => {
     if (ratingFilter === 'LOW' && r > 2) return false;
 
     // OMC filter
-    if (!isRoUser && !isOmcAdmin && omcFilter !== 'ALL' && fb.omc_name !== omcFilter) return false;
+    if (!isRoUser && !isOmcAdmin && omcFilter !== 'ALL') {
+      const fbOmc = resolveOmcName(fb);
+      if (String(fbOmc).toLowerCase().trim() !== String(omcFilter).toLowerCase().trim()) {
+        return false;
+      }
+    }
 
     // RO filter
     if (!isRoUser && roFilter !== 'ALL') {
@@ -686,31 +741,29 @@ const FeedbackLogs = () => {
               <span>{currentOmcName}</span>
             </div>
           ) : (
-            uniqueOmcs.length > 0 && (
-              <select
-                value={omcFilter}
-                onChange={(e) => {
-                  setOmcFilter(e.target.value);
-                  setRoFilter('ALL');
-                  setCurrentPage(1);
-                }}
-                style={{
-                  padding: '0.6rem 0.85rem',
-                  borderRadius: '8px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-bg)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.82rem',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="ALL">All OMCs</option>
-                {uniqueOmcs.map((o, idx) => (
-                  <option key={idx} value={o}>{o}</option>
-                ))}
-              </select>
-            )
+            <select
+              value={omcFilter}
+              onChange={(e) => {
+                setOmcFilter(e.target.value);
+                setRoFilter('ALL');
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '0.6rem 0.85rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-bg)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="ALL">All OMCs</option>
+              {uniqueOmcs.map((o, idx) => (
+                <option key={idx} value={o}>{o}</option>
+              ))}
+            </select>
           )}
 
           {/* RO filter / specific display */}
@@ -879,7 +932,7 @@ const FeedbackLogs = () => {
                       padding: '0.2rem 0.55rem',
                       borderRadius: '4px'
                     }}>
-                      {fb.omc_name || 'OMC'}
+                      {resolveOmcName(fb) || fb.omc_name || 'OMC'}
                     </span>
                   </td>
 
@@ -991,7 +1044,7 @@ const FeedbackLogs = () => {
               <tr key={`print-${idx}`} style={{ borderBottom: '1px solid #cbd5e1' }}>
                 <td style={{ padding: '6px 8px', fontWeight: 'bold' }}>{fb.display_machine_name || fb.machine_name}</td>
                 <td style={{ padding: '6px 8px' }}>{fb.ro_name || 'Retail Outlet'}</td>
-                <td style={{ padding: '6px 8px' }}>{fb.omc_name || 'OMC'}</td>
+                <td style={{ padding: '6px 8px' }}>{resolveOmcName(fb) || fb.omc_name || 'OMC'}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 'bold' }}>★ {Number(fb.rating).toFixed(1)}</td>
                 <td style={{ padding: '6px 8px' }}>{fb.reasons || '-'}</td>
                 <td style={{ padding: '6px 8px' }}>{fb.comment || '-'}</td>
@@ -1108,7 +1161,7 @@ const FeedbackLogs = () => {
                     {fb.ro_location && <div style={{ fontSize: '8.5px', color: '#64748b' }}>{fb.ro_location}</div>}
                   </td>
                   <td style={{ padding: '6px 8px', border: '1px solid #cbd5e1', fontWeight: '600' }}>
-                    {fb.omc_name || 'OMC'}
+                    {resolveOmcName(fb) || fb.omc_name || 'OMC'}
                   </td>
                   <td style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #cbd5e1' }}>
                     <span style={{

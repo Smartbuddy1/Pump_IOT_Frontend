@@ -188,6 +188,7 @@ const Analysis = () => {
   const [ros, setRos] = useState([]);
   const [machines, setMachines] = useState([]);
   const [liveReadings, setLiveReadings] = useState([]);
+  const [liveFootfalls, setLiveFootfalls] = useState([]);
   const [isExporting, setIsExporting] = useState(false);
   const [filterApplied, setFilterApplied] = useState(true);
   const [fullscreenGraph, setFullscreenGraph] = useState(null); // 'temp' | 'humidity' | 'odour' | 'water' | 'usage' | null
@@ -311,12 +312,39 @@ const Analysis = () => {
       }));
     };
 
+    const handleFootfall = (data) => {
+      const incomingMachId = data?.machineId || data?.machineName || data?.machine_id || 'Machine';
+      const newFootfall = {
+        id: Date.now(),
+        machineId: incomingMachId,
+        timestamp: data?.timestamp || new Date().toISOString()
+      };
+      setLiveFootfalls(prev => [newFootfall, ...(Array.isArray(prev) ? prev : [])]);
+
+      const todayStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      setUsageData(prev => {
+        if (!Array.isArray(prev) || prev.length === 0) {
+          return [{ date: todayStr, value: 1 }];
+        }
+        const exists = prev.some(r => r.date === todayStr);
+        if (exists) {
+          return prev.map(r => r.date === todayStr ? { ...r, value: (Number(r.value) || 0) + 1 } : r);
+        } else {
+          return [...prev, { date: todayStr, value: 1 }];
+        }
+      });
+    };
+
     socket.on('live_data_update', handleLiveTelemetry);
     socket.on('new_reading', handleLiveTelemetry);
+    socket.on('footfall_update', handleFootfall);
+    socket.on('person_in', handleFootfall);
 
     return () => {
       socket.off('live_data_update', handleLiveTelemetry);
       socket.off('new_reading', handleLiveTelemetry);
+      socket.off('footfall_update', handleFootfall);
+      socket.off('person_in', handleFootfall);
     };
   }, []);
 
@@ -425,8 +453,9 @@ const Analysis = () => {
     );
 
     const baseVisits = target
-      ? (Number(target.visits) || Number(target.usage) || 28)
-      : relevantMachines.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 15), 0);
+      ? (Number(target.visits) || Number(target.usage) || 0)
+      : relevantMachines.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0);
+    const dailyVisits = Math.max(0, Math.round(baseVisits / Math.max(targetDates.length, 7)));
 
     targetDates.forEach(({ dateLabel, idx }) => {
       const isToday = idx === (targetDates.length - 1);
@@ -435,7 +464,7 @@ const Analysis = () => {
       const tempVariance = isToday ? 0 : (dayOffset % 2 === 1 ? 0.4 : (dayOffset % 4 === 0 ? 0.8 : -0.5));
       const humVariance = isToday ? 0 : (dayOffset % 2 === 1 ? -1 : (dayOffset % 4 === 0 ? 1 : 0));
       const odourVariance = isToday ? 0 : (dayOffset % 3 === 1 ? 2 : -2);
-      const dayVariance = dayOffset === 0 ? 0 : ((dayOffset * 17) % 25) - 12;
+      const dayVariance = dayOffset === 0 ? 0 : ((dayOffset * 17) % 7) - 3;
       const visitsVariance = target
         ? Math.round(dayVariance / Math.max(mList.length, 1))
         : dayVariance;
@@ -449,7 +478,7 @@ const Analysis = () => {
         avg_h2s: Math.max(10, Math.min(1500, (baseLiveValues.h2s || 1055) - ((dayOffset % 3) - 1) * 20)),
         avg_water: Math.max(5, Math.min(100, Math.round(baseWater + (isToday ? 0 : (dayOffset % 2 === 1 ? -2 : 3))))),
         total_water_alerts: isToday ? lowWaterCount : (lowWaterCount > 0 && dayOffset % 2 === 0 ? 1 : 0),
-        total_visits: baseVisits > 0 ? Math.max(5, baseVisits + visitsVariance) : 12
+        total_visits: dailyVisits > 0 ? Math.max(0, dailyVisits + visitsVariance) : 0
       });
     });
     return result;
@@ -459,6 +488,9 @@ const Analysis = () => {
   const fetchAnalytics = async (customMachine, customFrom, customTo, mList = machines, customRo = selectedRo) => {
     try {
       const params = {};
+      if (selectedClient && selectedClient !== 'All') {
+        params.omcId = selectedClient;
+      }
       if (customRo && customRo !== 'All') {
         params.roId = customRo;
       }
@@ -468,14 +500,20 @@ const Analysis = () => {
       if (customFrom) params.startDate = customFrom;
       if (customTo) params.endDate = customTo;
 
-      const [res, readingsRes] = await Promise.all([
+      const [res, readingsRes, footfallRes] = await Promise.all([
         api.get('/analytics/history', { params }).catch(() => ({ data: { data: [] } })),
-        api.get('/analytics/readings', { params: { ...params, days: 'all', limit: 'all' } }).catch(() => ({ data: { data: [] } }))
+        api.get('/analytics/readings', { params: { ...params, days: 'all', limit: 'all' } }).catch(() => ({ data: { data: [] } })),
+        api.get('/analytics/footfall-readings', { params: { ...params, days: 'all', limit: 'all' } }).catch(() => ({ data: { data: [] } }))
       ]);
 
       const rawReadings = readingsRes.data?.data || [];
       if (Array.isArray(rawReadings) && rawReadings.length > 0) {
         setLiveReadings(rawReadings);
+      }
+
+      const rawFootfalls = footfallRes.data?.data || [];
+      if (Array.isArray(rawFootfalls) && rawFootfalls.length > 0) {
+        setLiveFootfalls(rawFootfalls);
       }
 
       let history = (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0)
@@ -495,7 +533,12 @@ const Analysis = () => {
         return { date: row.date, value: o, odour: o, nh3: n, h2s: h };
       }));
       setWaterData(history.map(row => ({ date: row.date, value: Number(row.avg_water ?? row.water) || (Number(row.total_water_alerts) > 0 ? 15 : 80) })));
-      setUsageData(history.map(row => ({ date: row.date, value: Number(row.total_visits) || 15 })));
+      setUsageData(history.map(row => ({
+        date: row.date,
+        value: (row.total_visits !== undefined && row.total_visits !== null && !isNaN(Number(row.total_visits)))
+          ? Number(row.total_visits)
+          : 0
+      })));
     } catch (error) {
       console.error('Failed to fetch analytics:', error);
       const history = generateFallbackAnalytics(customMachine, mList, customRo, customFrom, customTo);
@@ -508,7 +551,12 @@ const Analysis = () => {
         return { date: row.date, value: o, odour: o, nh3: n, h2s: h };
       }));
       setWaterData(history.map(row => ({ date: row.date, value: Number(row.avg_water ?? row.water) || (Number(row.total_water_alerts) > 0 ? 15 : 80) })));
-      setUsageData(history.map(row => ({ date: row.date, value: Number(row.total_visits) || 15 })));
+      setUsageData(history.map(row => ({
+        date: row.date,
+        value: (row.total_visits !== undefined && row.total_visits !== null && !isNaN(Number(row.total_visits)))
+          ? Number(row.total_visits)
+          : 0
+      })));
     }
   };
 
@@ -681,7 +729,7 @@ const Analysis = () => {
       ? getWaterLevel(latestLive.water ?? latestLive.liveWater) 
       : (Math.round(relevant.reduce((sum, m) => sum + getWaterLevel(m.live_water ?? m.liveWater), 0) / count) || 80);
     const waterAlerts = latestLive ? (isWaterAlert(latestLive.water ?? latestLive.liveWater) ? 1 : 0) : relevant.filter(m => isWaterAlert(m.live_water ?? m.liveWater)).length;
-    const visits = liveReadings.length || relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0) || 352;
+    const visits = relevant.reduce((sum, m) => sum + (Number(m.visits) || Number(m.usage) || 0), 0);
 
     return { temp, hum, odour, nh3, h2s, water: waterLevel, waterAlerts, visits };
   }, [filteredMachinesForDropdown, selectedMachine, machines, liveReadings]);
@@ -708,113 +756,216 @@ const Analysis = () => {
       if (filtered.length > 0) relevantReadings = filtered;
     }
 
-    const todayDate = new Date();
-    const todayStr = todayDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const yestDate = new Date();
-    yestDate.setDate(yestDate.getDate() - 1);
+    const isSameCalendarDay = (d1, d2) => {
+      if (!d1 || !d2 || isNaN(d1.getTime()) || isNaN(d2.getTime())) return false;
+      return d1.getFullYear() === d2.getFullYear() &&
+             d1.getMonth() === d2.getMonth() &&
+             d1.getDate() === d2.getDate();
+    };
+
+    const now = new Date();
+    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const todayStrShort = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const yestDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
     const yesterdayStr = yestDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const yesterdayStrShort = yestDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
     // Dedicated Handler for Daily User Footfall
     if (metricType === 'usage') {
-      const todayItems = (relevantReadings || []).filter(r => {
-        const d = new Date(r.timestamp);
-        return !isNaN(d.getTime()) && d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) === todayStr;
-      });
-      const yesterdayItems = (relevantReadings || []).filter(r => {
-        const d = new Date(r.timestamp);
-        return !isNaN(d.getTime()) && d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) === yesterdayStr;
-      });
+      let relevantFootfalls = liveFootfalls;
+      if (selectedMachine && selectedMachine !== 'All') {
+        const target = String(selectedMachine).toLowerCase();
+        relevantFootfalls = (liveFootfalls || []).filter(f => 
+          String(f.machineId).toLowerCase() === target ||
+          String(f.machineId).toLowerCase().replace(/o/g, '0') === target.replace(/o/g, '0')
+        );
+      }
 
-      const todayCount = todayItems.length || Number(baseLiveValues.visits) || 0;
-      const yesterdayCount = yesterdayItems.length || Math.round((todayCount || 28) * 0.9) || 15;
-
-      // Map rawHistory by date for previous historical dates
+      // Map rawHistory by date for historical dates
       const historyLookup = {};
       if (Array.isArray(rawHistory)) {
         rawHistory.forEach(row => {
-          if (row.date) historyLookup[row.date] = Number(row.value ?? row.total_visits ?? row.users) || 0;
+          if (row.date) {
+            const v = Number(row.value ?? row.total_visits ?? row.users);
+            historyLookup[row.date] = !isNaN(v) ? v : 0;
+          }
         });
       }
 
+      // Known totals from history (e.g. 29 visits for 05 Nov)
+      const rawYestTotal = Number(historyLookup[yesterdayStrShort] || 0);
+      const rawTodayTotal = Number(historyLookup[todayStrShort] || 0);
+
+      const yestEvents = (relevantFootfalls || []).filter(f => {
+        const d = new Date(f.timestamp);
+        return isSameCalendarDay(d, yestDate);
+      });
+      const todayEvents = (relevantFootfalls || []).filter(f => {
+        const d = new Date(f.timestamp);
+        return isSameCalendarDay(d, todayDate);
+      });
+
+      const totalYestVisits = Math.max(rawYestTotal, yestEvents.length);
+      const totalTodayVisits = Math.max(rawTodayTotal, todayEvents.length);
+
+      // 1. Hourly View (Last 1 Hour: 12 intervals of 5 minutes)
+      if (timeframe === '1H') {
+        const points = [];
+        const curTime = new Date();
+        for (let i = 11; i >= 0; i--) {
+          const startWindow = new Date(curTime.getTime() - (i + 1) * 5 * 60 * 1000);
+          const endWindow = new Date(curTime.getTime() - i * 5 * 60 * 1000);
+          const timeLabel = endWindow.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+          const usersInWindow = (relevantFootfalls || []).filter(f => {
+            const d = new Date(f.timestamp);
+            return !isNaN(d.getTime()) && d >= startWindow && d < endWindow;
+          }).length;
+          points.push({ date: timeLabel, time: timeLabel, value: usersInWindow, users: usersInWindow });
+        }
+        return points;
+      }
+
+      // 2. Today View (Hour by hour for today)
       if (timeframe === 'Today') {
         const hourly = [];
-        const curH = todayDate.getHours();
-        for (let h = 6; h <= Math.max(curH, 18); h++) {
+        const curH = now.getHours();
+        for (let h = 6; h <= Math.max(curH, 20); h++) {
           const ampm = h >= 12 ? 'PM' : 'AM';
           const dh = h % 12 === 0 ? 12 : h % 12;
           const label = `${String(dh).padStart(2, '0')}:00 ${ampm}`;
-          const countInHour = todayItems.filter(r => {
-            const d = new Date(r.timestamp);
-            return !isNaN(d.getTime()) && d.getHours() === h;
+          const countInHour = todayEvents.filter(f => {
+            const d = new Date(f.timestamp);
+            return d.getHours() === h;
           }).length;
-          const baselineHour = Math.max(1, Math.round((todayCount / Math.max(curH - 5, 1)) * (h <= curH ? 1 : 0)));
-          const finalVal = countInHour > 0 ? countInHour : (h <= curH ? baselineHour : 0);
-          hourly.push({ date: label, time: label, value: finalVal, users: finalVal });
+          hourly.push({ date: label, time: label, value: countInHour, users: countInHour });
+        }
+
+        const todaySum = hourly.reduce((sum, item) => sum + item.value, 0);
+        if (totalTodayVisits > 0 && todaySum === 0) {
+          const count = hourly.length || 1;
+          const perSlot = Math.floor(totalTodayVisits / count);
+          const rem = totalTodayVisits % count;
+          hourly.forEach((item, idx) => {
+            item.value = perSlot + (idx === count - 1 ? rem : 0);
+            item.users = item.value;
+          });
         }
         return hourly;
       }
 
+      // 3. Yesterday View (Hourly slots for yesterday - ensures 05 Nov visits e.g. 29 are displayed)
       if (timeframe === 'Yesterday') {
         const hourly = [];
         for (let h = 8; h <= 20; h += 2) {
           const ampm = h >= 12 ? 'PM' : 'AM';
           const dh = h % 12 === 0 ? 12 : h % 12;
-          const label = `${String(dh).padStart(2, '0')}:00 ${ampm}`;
-          const countInHour = yesterdayItems.filter(r => {
-            const d = new Date(r.timestamp);
-            return !isNaN(d.getTime()) && Math.abs(d.getHours() - h) <= 1;
+          const label = `${yesterdayStrShort} ${String(dh).padStart(2, '0')}:00 ${ampm}`;
+          const countInSlot = yestEvents.filter(f => {
+            const d = new Date(f.timestamp);
+            return d.getHours() === h || d.getHours() === h + 1;
           }).length;
-          const baselineHour = Math.max(2, Math.round(yesterdayCount / 7));
-          const finalVal = countInHour > 0 ? countInHour : baselineHour;
-          hourly.push({ date: label, time: label, value: finalVal, users: finalVal });
+          hourly.push({ date: label, time: label, value: countInSlot, users: countInSlot });
+        }
+
+        const currentSum = hourly.reduce((sum, item) => sum + item.value, 0);
+        if (totalYestVisits > 0 && currentSum === 0) {
+          // Realistic distribution curve across yesterday's daylight hours
+          const ratios = [0.07, 0.17, 0.24, 0.28, 0.14, 0.07, 0.03];
+          let distributed = ratios.map(r => Math.round(totalYestVisits * r));
+          const diff = totalYestVisits - distributed.reduce((a, b) => a + b, 0);
+          distributed[3] += diff; // peak at 02:00 PM
+          hourly.forEach((item, idx) => {
+            item.value = Math.max(0, distributed[idx] || 0);
+            item.users = item.value;
+          });
         }
         return hourly;
       }
 
-      if (timeframe === '30D') {
+      // 4. 2D / All View (Yesterday & Today continuous timeline - ensures 05 Nov is counted)
+      if (timeframe === '2D') {
+        const spans = [
+          { label: `${yesterdayStrShort} 09:00 AM`, isYest: true, hStart: 8, hEnd: 11, ratio: 0.15 },
+          { label: `${yesterdayStrShort} 01:00 PM`, isYest: true, hStart: 12, hEnd: 14, ratio: 0.50 },
+          { label: `${yesterdayStrShort} 05:00 PM`, isYest: true, hStart: 15, hEnd: 18, ratio: 0.30 },
+          { label: `${yesterdayStrShort} 09:00 PM`, isYest: true, hStart: 19, hEnd: 23, ratio: 0.05 },
+          { label: `${todayStrShort} 08:00 AM`, isYest: false, hStart: 6, hEnd: 9, ratio: 0.20 },
+          { label: `${todayStrShort} 11:00 AM`, isYest: false, hStart: 10, hEnd: 12, ratio: 0.35 },
+          { label: `${todayStrShort} 02:00 PM`, isYest: false, hStart: 13, hEnd: 15, ratio: 0.30 },
+          { label: `${todayStrShort} 05:00 PM`, isYest: false, hStart: 16, hEnd: 19, ratio: 0.15 },
+          { label: `${todayStrShort} 09:00 PM`, isYest: false, hStart: 20, hEnd: 23, ratio: 0.00 }
+        ];
+
+        const resultSpans = spans.map(s => {
+          const eventsList = s.isYest ? yestEvents : todayEvents;
+          const count = eventsList.filter(f => {
+            const d = new Date(f.timestamp);
+            return d.getHours() >= s.hStart && d.getHours() <= s.hEnd;
+          }).length;
+          return { date: s.label, time: s.label, value: count, users: count, isYest: s.isYest, ratio: s.ratio };
+        });
+
+        // Ensure yesterday's span accurately reflects total visits (e.g. 29 visits)
+        const yestResultSum = resultSpans.filter(s => s.isYest).reduce((a, b) => a + b.value, 0);
+        if (totalYestVisits > 0 && yestResultSum === 0) {
+          const yestSpans = resultSpans.filter(s => s.isYest);
+          let assigned = yestSpans.map(s => Math.round(totalYestVisits * s.ratio));
+          const diff = totalYestVisits - assigned.reduce((a, b) => a + b, 0);
+          assigned[1] += diff; // peak at 01:00 PM
+          yestSpans.forEach((s, i) => {
+            s.value = Math.max(0, assigned[i]);
+            s.users = s.value;
+          });
+        }
+
+        // Ensure today's span reflects visits if any
+        const todayResultSum = resultSpans.filter(s => !s.isYest).reduce((a, b) => a + b.value, 0);
+        if (totalTodayVisits > 0 && todayResultSum === 0) {
+          const todaySpans = resultSpans.filter(s => !s.isYest);
+          let assigned = todaySpans.map(s => Math.round(totalTodayVisits * s.ratio));
+          const diff = totalTodayVisits - assigned.reduce((a, b) => a + b, 0);
+          assigned[1] += diff;
+          todaySpans.forEach((s, i) => {
+            s.value = Math.max(0, assigned[i]);
+            s.users = s.value;
+          });
+        }
+
+        return resultSpans.map(({ date, time, value, users }) => ({ date, time, value, users }));
+      }
+
+      // 5. 30D View (Last 30 Days)
+      if (timeframe === '30D' || timeframe === 'Monthly') {
         const days30 = [];
         for (let i = 29; i >= 0; i--) {
           const dt = new Date();
           dt.setDate(dt.getDate() - i);
           const dateKey = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-          let count = historyLookup[dateKey];
-          if (count === undefined) {
-            if (i === 0) count = todayCount;
-            else if (i === 1) count = yesterdayCount;
-            else {
-              const variance = ((i * 17) % 31) - 15;
-              count = Math.max(15, Math.round((todayCount || 45) + variance));
-            }
-          }
+          const count = historyLookup[dateKey] ?? 0;
           days30.push({ date: dateKey, value: count, users: count });
         }
         return days30;
       }
 
+      // 6. Financial Year View (FY)
       if (timeframe === 'FY') {
         const fyMonths = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
-        const seasonal = [0.8, 0.9, 1.1, 1.2, 1.0, 0.95, 1.05, 1.15, 1.25, 0.9, 0.85, 1.1];
-        return fyMonths.map((m, idx) => ({
-          date: m,
-          value: Math.round((todayCount || 45) * 28 * seasonal[idx]),
-          users: Math.round((todayCount || 45) * 28 * seasonal[idx])
-        }));
+        const curMonthStr = todayDate.toLocaleDateString('en-GB', { month: 'short' });
+        const totalVisitsCount = Object.values(historyLookup).reduce((s, v) => s + v, 0);
+        return fyMonths.map((m) => {
+          const val = m === curMonthStr ? totalVisitsCount : 0;
+          return { date: m, value: val, users: val };
+        });
       }
 
-      // Default: Last 7 Days Daily User Footfall (for '2D', '1H', and 'Weekly')
+      // Default: Last 7 Days Daily User Footfall (for 'Weekly' / 7D)
       const sevenDays = [];
       for (let i = 6; i >= 0; i--) {
         const dt = new Date();
         dt.setDate(dt.getDate() - i);
         const dateKey = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-        let count = 0;
-        if (i === 0) {
-          count = todayCount > 0 ? todayCount : (historyLookup[dateKey] || 35);
-        } else if (i === 1) {
-          count = yesterdayCount > 0 ? yesterdayCount : (historyLookup[dateKey] || 42);
-        } else {
-          count = historyLookup[dateKey] ?? Math.max(18, Math.round(((todayCount + yesterdayCount) / 2 || 38) + (((i * 7) % 13) - 6) * 3));
-        }
+        const count = historyLookup[dateKey] ?? 0;
         sevenDays.push({ date: dateKey, value: count, users: count });
       }
       return sevenDays;
@@ -1042,7 +1193,7 @@ const Analysis = () => {
   const odourStats = calcStats(displayedOdourData, 'value');
   const waterStats = calcStats(displayedWaterData, 'value');
   const usageStats = calcStats(displayedUsageData, 'value');
-  const displayedUsageTotal = (displayedUsageData || []).reduce((a, b) => a + (Number(b.value) || 0), 0) || baseLiveValues.visits || 352;
+  const displayedUsageTotal = (displayedUsageData || []).reduce((a, b) => a + (Number(b.value) || 0), 0);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1138,9 +1289,10 @@ const Analysis = () => {
           color: '#8b5cf6',
           gradientId: 'modalUsageGrad',
           data: displayedUsageData,
-          isBarChart: true,
+          isBarChart: false,
           yDomain: [0, 'auto'],
           yUnit: ' Visits',
+          allowDecimals: false,
           stats: usageStats,
           benchmark: `${displayedUsageTotal} Total Visits`,
           referenceLines: []
@@ -2155,11 +2307,18 @@ const Analysis = () => {
 
                 {/* Stock Ticker Strip */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', flexWrap: 'wrap' }}>
-                  <span>Daily Avg: <strong style={{ color: 'var(--text-primary)' }}>{usageStats.avg} Visits/day</strong></span>
+                  <span>{chartTimeframes.usage === '1H' ? 'Slot Avg' : 'Daily Avg'}: <strong style={{ color: 'var(--text-primary)' }}>{usageStats.avg} {chartTimeframes.usage === '1H' ? 'Visits/slot' : 'Visits/day'}</strong></span>
                   <span>•</span>
                   <span>Peak: <strong style={{ color: 'var(--text-primary)' }}>{usageStats.max} Visits</strong></span>
                   <span>•</span>
-                  <span>Timeline: <strong style={{ color: '#8b5cf6' }}>{chartTimeframes.usage === '2D' ? 'Last 7 Days' : chartTimeframes.usage}</strong></span>
+                  <span>Timeline: <strong style={{ color: '#8b5cf6' }}>{
+                    chartTimeframes.usage === '1H' ? 'Last 1 Hour' :
+                    chartTimeframes.usage === 'Today' ? "Today's Timeline" :
+                    chartTimeframes.usage === 'Yesterday' ? "Yesterday's Timeline" :
+                    chartTimeframes.usage === '2D' ? '2-Day Timeline' :
+                    chartTimeframes.usage === 'Monthly' ? 'Last 30 Days' :
+                    chartTimeframes.usage === 'FY' ? 'Financial Year' : 'Last 7 Days'
+                  }</strong></span>
                 </div>
               </div>
             </div>
@@ -2176,35 +2335,32 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Bar Chart with Brush Scroller */}
+          {/* Line / Area Chart with Brush Scroller */}
           <div style={{ height: '245px', width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={displayedUsageData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={displayedUsageData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="usageBarGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.95} />
-                    <stop offset="100%" stopColor="#7c3aed" stopOpacity={0.65} />
+                  <linearGradient id="usageLineGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.5} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
+                <YAxis domain={[0, 'auto']} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: 'var(--text-secondary)' }} />
                 <RechartsTooltip content={<StockTooltip unit="Visits" metricName="Daily User Footfall" benchmark="Daily Footfall" />} />
 
-                <Bar
+                <Area
+                  type="monotone"
                   dataKey="value"
                   name="Daily Users"
-                  fill="url(#usageBarGrad)"
-                  radius={[5, 5, 0, 0]}
-                  maxBarSize={42}
-                >
-                  {displayedUsageData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={index === displayedUsageData.length - 1 ? '#a855f7' : 'url(#usageBarGrad)'} 
-                    />
-                  ))}
-                </Bar>
+                  stroke="#8b5cf6"
+                  strokeWidth={2.8}
+                  fillOpacity={1}
+                  fill="url(#usageLineGrad)"
+                  dot={{ r: 3.5, fill: '#8b5cf6', stroke: '#ffffff', strokeWidth: 2 }}
+                  activeDot={{ r: 6.5, fill: '#7c3aed', stroke: '#ffffff', strokeWidth: 2 }}
+                />
 
                 {displayedUsageData.length > 14 && (
                   <Brush 
@@ -2218,7 +2374,7 @@ const Analysis = () => {
                     endIndex={displayedUsageData.length > 0 ? displayedUsageData.length - 1 : 0}
                   />
                 )}
-              </BarChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
